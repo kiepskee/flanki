@@ -3,143 +3,204 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Flanki</title>
+    <title>Flanki Session Manager</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <div class="page-shell">
-      <header class="hero">
+    <div class="app-shell">
+      <header class="topbar">
         <div>
-          <p class="eyebrow">Shared Game Sessions</p>
-          <h1>Bring your squad into the same match in seconds.</h1>
-          <p class="hero-copy">
-            Sign in, pull friends into a lobby, and let anyone nearby join through a QR code.
-          </p>
+          <p class="eyebrow">Flanki</p>
+          <h1>Session Manager</h1>
+          <p class="subcopy">Create a lobby, build teams, run the throw order, and track live Flanki stats and ranking.</p>
         </div>
-        <div class="hero-card" id="auth-panel">
-          <div id="signed-out-view">
-            <div class="auth-split">
-              <section class="auth-block">
-                <h2>Create player profile</h2>
-                <p>Set up your own account so friends can find and invite you.</p>
-                <form id="signup-form" class="stack-form">
-                  <input id="signup-display-name" name="displayName" placeholder="Display name" required />
-                  <input id="signup-username" name="username" placeholder="Player name" required />
-                  <input id="signup-email" name="email" type="email" placeholder="Email address" required />
-                  <input id="signup-password" name="password" type="password" placeholder="Password" required />
-                  <button class="primary-button" type="submit">Create account</button>
-                </form>
-              </section>
-              <section class="auth-block">
-                <h2>Sign in</h2>
-                <p>Already have a player profile? Use your email or player name.</p>
-                <form id="login-form" class="stack-form">
-                  <input id="login-identifier" name="identifier" placeholder="Email or player name" required />
-                  <input id="login-password" name="password" type="password" placeholder="Password" required />
-                  <button class="secondary-button" type="submit">Sign in</button>
-                </form>
-                <form id="forgot-password-form" class="stack-form auth-subform">
-                  <label for="forgot-email">Forgot your password?</label>
-                  <div class="inline-form">
-                    <input id="forgot-email" name="email" type="email" placeholder="Email address" required />
-                    <button class="secondary-button" type="submit">Send reset link</button>
-                  </div>
-                </form>
-                <form id="reset-password-form" class="stack-form auth-subform" hidden>
-                  <label for="reset-password">Choose a new password</label>
-                  <input id="reset-password" name="password" type="password" placeholder="New password" required />
-                  <button class="primary-button" type="submit">Update password</button>
-                </form>
-              </section>
+        <div id="signed-in-view" class="topbar-card" hidden>
+          <div id="verification-banner" class="notice-card" hidden>
+            <p id="verification-message"></p>
+            <button class="secondary-button" id="resend-verification-button" type="button">Resend verification</button>
+          </div>
+          <div class="profile-row">
+            <img id="me-avatar" alt="" />
+            <div>
+              <strong id="me-name"></strong>
+              <p id="me-handle"></p>
             </div>
           </div>
-          <div id="signed-in-view" hidden>
-            <div id="verification-banner" class="notice-card" hidden>
-              <p id="verification-message"></p>
-              <button class="secondary-button" id="resend-verification-button" type="button">Resend verification email</button>
-            </div>
-            <div class="profile-row">
-              <img id="me-avatar" alt="" />
-              <div>
-                <strong id="me-name"></strong>
-                <p id="me-handle"></p>
-              </div>
-            </div>
-            <button class="secondary-button" id="logout-button" type="button">Log out</button>
-          </div>
+          <button class="secondary-button" id="logout-button" type="button">Log out</button>
         </div>
       </header>
 
-      <main class="dashboard" id="dashboard" hidden>
-        <section class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="eyebrow">Friends</p>
-              <h2>Invite from your list</h2>
-            </div>
-          </div>
-          <form id="friend-form" class="stack-form">
-            <label for="friend-username">Add a friend by player name</label>
-            <div class="inline-form">
-              <input id="friend-username" name="username" placeholder="player_name" required />
-              <button class="primary-button" type="submit">Add friend</button>
-            </div>
-          </form>
-          <div id="friend-empty" class="empty-state">No friends added yet.</div>
-          <ul id="friend-list" class="card-list"></ul>
-        </section>
+      <main>
+        <section id="signed-out-view" class="stack-panel">
+          <article class="panel">
+            <h2>Create player profile</h2>
+            <form id="signup-form" class="stack-form">
+              <input id="signup-display-name" name="displayName" placeholder="Display name" required />
+              <input id="signup-username" name="username" placeholder="Player name" required />
+              <input id="signup-email" name="email" type="email" placeholder="Email address" required />
+              <input id="signup-password" name="password" type="password" placeholder="Password" required />
+              <button class="primary-button" type="submit">Create account</button>
+            </form>
+          </article>
 
-        <section class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="eyebrow">Session</p>
-              <h2>Create a shared lobby</h2>
-            </div>
-          </div>
-          <form id="session-form" class="stack-form">
-            <label for="session-name">Lobby name</label>
-            <div class="inline-form">
-              <input id="session-name" name="name" placeholder="Friday Squad" required />
-              <button class="primary-button" type="submit">Create session</button>
-            </div>
-          </form>
-          <div id="session-empty" class="empty-state">Create a session to start inviting people.</div>
-          <div id="session-card" hidden>
-            <div class="session-title-row">
-              <div>
-                <h3 id="session-name-output"></h3>
-                <p id="session-host-output"></p>
+          <article class="panel">
+            <h2>Sign in</h2>
+            <form id="login-form" class="stack-form">
+              <input id="login-identifier" name="identifier" placeholder="Email or player name" required />
+              <input id="login-password" name="password" type="password" placeholder="Password" required />
+              <button class="secondary-button" type="submit">Sign in</button>
+            </form>
+            <form id="forgot-password-form" class="stack-form top-gap">
+              <label for="forgot-email">Forgot password?</label>
+              <div class="inline-form">
+                <input id="forgot-email" name="email" type="email" placeholder="Email address" required />
+                <button class="secondary-button" type="submit">Send link</button>
               </div>
-              <span class="pill" id="session-status-output"></span>
-            </div>
-            <label for="session-link">Share link</label>
-            <div class="inline-form">
-              <input id="session-link" readonly />
-              <button class="secondary-button" id="copy-link-button" type="button">Copy</button>
-            </div>
-            <div class="qr-wrap">
-              <img id="qr-image" alt="Session QR code" />
-            </div>
-            <div>
-              <p class="eyebrow">Players</p>
-              <ul id="member-list" class="card-list compact"></ul>
-            </div>
-            <div>
-              <p class="eyebrow">Pending invites</p>
-              <ul id="invite-list" class="card-list compact"></ul>
-            </div>
-          </div>
+            </form>
+            <form id="reset-password-form" class="stack-form top-gap" hidden>
+              <label for="reset-password">Choose a new password</label>
+              <input id="reset-password" name="password" type="password" placeholder="New password" required />
+              <button class="primary-button" type="submit">Update password</button>
+            </form>
+          </article>
         </section>
 
-        <section class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="eyebrow">Incoming</p>
-              <h2>Your invites</h2>
+        <section id="dashboard" class="stack-panel" hidden>
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Lobby</p>
+                <h2>Flanki session</h2>
+              </div>
             </div>
-          </div>
-          <div id="incoming-empty" class="empty-state">No pending invites right now.</div>
-          <ul id="incoming-list" class="card-list"></ul>
+            <form id="session-form" class="stack-form">
+              <div class="inline-form">
+                <input id="session-name" name="name" placeholder="Tonight's Flanki session" required />
+                <button class="primary-button" type="submit">Create</button>
+              </div>
+            </form>
+            <div id="session-empty" class="empty-state">Create a session to invite players and build teams.</div>
+            <div id="session-card" hidden>
+              <div class="session-card-head">
+                <div>
+                  <h3 id="session-name-output"></h3>
+                  <p id="session-host-output"></p>
+                  <p id="session-size-output" class="meta"></p>
+                </div>
+                <span class="pill" id="session-status-output"></span>
+              </div>
+              <div class="inline-form top-gap">
+                <input id="session-link" readonly />
+                <button class="secondary-button" id="copy-link-button" type="button">Copy</button>
+              </div>
+              <div class="qr-wrap">
+                <img id="qr-image" alt="Session QR code" />
+              </div>
+
+              <div class="team-actions">
+                <button class="primary-button" id="auto-teams-button" type="button">Auto sort teams</button>
+                <button class="secondary-button" id="captain-draft-button" type="button">Captain draft</button>
+                <button class="primary-button" id="start-match-button" type="button">Start match</button>
+              </div>
+
+              <div id="captain-setup" class="stack-form top-gap" hidden>
+                <label>Choose captains</label>
+                <div class="inline-form">
+                  <select id="captain-a-select"></select>
+                  <select id="captain-b-select"></select>
+                </div>
+                <button class="primary-button" id="start-draft-button" type="button">Start draft</button>
+              </div>
+
+              <div id="draft-banner" class="notice-card top-gap" hidden>
+                <p id="draft-turn-text"></p>
+              </div>
+
+              <div class="teams-grid">
+                <section class="team-panel">
+                  <p class="eyebrow">Team A</p>
+                  <p id="team-a-summary" class="meta"></p>
+                  <ul id="team-a-list" class="card-list compact"></ul>
+                </section>
+                <section class="team-panel">
+                  <p class="eyebrow">Team B</p>
+                  <p id="team-b-summary" class="meta"></p>
+                  <ul id="team-b-list" class="card-list compact"></ul>
+                </section>
+              </div>
+
+              <section id="match-panel" class="panel top-gap" hidden>
+                <p class="eyebrow">Live match</p>
+                <h3 id="match-status-title"></h3>
+                <p id="current-player-text" class="meta"></p>
+                <div class="match-actions">
+                  <button class="secondary-button" id="throw-miss-button" type="button">Miss</button>
+                  <button class="primary-button" id="throw-hit-button" type="button">Hit</button>
+                  <button class="secondary-button" id="throw-finish-button" type="button">Beer finished</button>
+                  <button class="primary-button" id="throw-hit-finish-button" type="button">Hit + finish</button>
+                </div>
+                <ul id="player-stats-list" class="card-list compact"></ul>
+              </section>
+
+              <section class="top-gap">
+                <p class="eyebrow">Available players</p>
+                <ul id="available-player-list" class="card-list compact"></ul>
+              </section>
+
+              <section class="top-gap">
+                <p class="eyebrow">Pending invites</p>
+                <ul id="invite-list" class="card-list compact"></ul>
+              </section>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Players</p>
+                <h2>Friend list</h2>
+              </div>
+            </div>
+            <form id="friend-form" class="stack-form">
+              <div class="inline-form">
+                <input id="friend-username" name="username" placeholder="player_name" required />
+                <button class="primary-button" type="submit">Add</button>
+              </div>
+            </form>
+            <div id="friend-empty" class="empty-state">No players added yet.</div>
+            <ul id="friend-list" class="card-list"></ul>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Invites</p>
+                <h2>Incoming</h2>
+              </div>
+            </div>
+            <div id="incoming-empty" class="empty-state">No pending invites right now.</div>
+            <ul id="incoming-list" class="card-list"></ul>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Ranking</p>
+                <h2>Leaderboard</h2>
+              </div>
+            </div>
+            <ul id="leaderboard-list" class="card-list compact"></ul>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Roadmap</p>
+                <h2>Next steps</h2>
+              </div>
+            </div>
+            <ul id="roadmap-list" class="card-list compact"></ul>
+          </article>
         </section>
       </main>
     </div>

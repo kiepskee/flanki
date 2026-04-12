@@ -1,6 +1,6 @@
 # Flanki
 
-A Cloudflare-native web app for creating shared game sessions, inviting friends, and joining by QR code.
+A Cloudflare-native Flanki session manager for creating lobbies, inviting friends, splitting teams, and tracking live match stats plus ranking.
 
 ## Stack
 
@@ -81,6 +81,14 @@ npm run deploy
 - Create your own player profile
 - Sign in with your player account
 - Maintain a friend list from other registered players
-- Create shared game sessions
+- Create shared Flanki sessions
 - Invite friends directly into a session
 - Join sessions with a share link or QR code
+- Auto-sort players into two teams
+- Run a captain draft where captain A picks 1, then teams alternate in 2-pick turns
+- Reorder players inside each team to match the real throwing order
+- Start a live match and log each throw as miss, hit, beer finished, or hit plus beer finished
+- Remove players from the active rotation once they finish their beer and leave the field
+- Track per-match player and team accuracy
+- Record how many hits a player had when they finished their beer
+- Build a running leaderboard from cumulative player performance
