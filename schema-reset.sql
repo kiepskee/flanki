@@ -1,9 +1,11 @@
+PRAGMA foreign_keys = OFF;
+DROP TABLE IF EXISTS throw_events;
+DROP TABLE IF EXISTS session_stats;
 DROP TABLE IF EXISTS session_invites;
 DROP TABLE IF EXISTS session_members;
 DROP TABLE IF EXISTS game_sessions;
 DROP TABLE IF EXISTS friend_links;
-DROP TABLE IF EXISTS throw_events;
-DROP TABLE IF EXISTS session_stats;
-DROP TABLE IF EXISTS player_records;
 DROP TABLE IF EXISTS auth_tokens;
+DROP TABLE IF EXISTS player_records;
 DROP TABLE IF EXISTS users;
+PRAGMA foreign_keys = ON;
