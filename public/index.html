@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Flanki</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Shared Game Sessions</p>
+          <h1>Bring your squad into the same match in seconds.</h1>
+          <p class="hero-copy">
+            Sign in, pull friends into a lobby, and let anyone nearby join through a QR code.
+          </p>
+        </div>
+        <div class="hero-card" id="auth-panel">
+          <div id="signed-out-view">
+            <div class="auth-split">
+              <section class="auth-block">
+                <h2>Create player profile</h2>
+                <p>Set up your own account so friends can find and invite you.</p>
+                <form id="signup-form" class="stack-form">
+                  <input id="signup-display-name" name="displayName" placeholder="Display name" required />
+                  <input id="signup-username" name="username" placeholder="Player name" required />
+                  <input id="signup-email" name="email" type="email" placeholder="Email address" required />
+                  <input id="signup-password" name="password" type="password" placeholder="Password" required />
+                  <button class="primary-button" type="submit">Create account</button>
+                </form>
+              </section>
+              <section class="auth-block">
+                <h2>Sign in</h2>
+                <p>Already have a player profile? Use your email or player name.</p>
+                <form id="login-form" class="stack-form">
+                  <input id="login-identifier" name="identifier" placeholder="Email or player name" required />
+                  <input id="login-password" name="password" type="password" placeholder="Password" required />
+                  <button class="secondary-button" type="submit">Sign in</button>
+                </form>
+                <form id="forgot-password-form" class="stack-form auth-subform">
+                  <label for="forgot-email">Forgot your password?</label>
+                  <div class="inline-form">
+                    <input id="forgot-email" name="email" type="email" placeholder="Email address" required />
+                    <button class="secondary-button" type="submit">Send reset link</button>
+                  </div>
+                </form>
+                <form id="reset-password-form" class="stack-form auth-subform" hidden>
+                  <label for="reset-password">Choose a new password</label>
+                  <input id="reset-password" name="password" type="password" placeholder="New password" required />
+                  <button class="primary-button" type="submit">Update password</button>
+                </form>
+              </section>
+            </div>
+          </div>
+          <div id="signed-in-view" hidden>
+            <div id="verification-banner" class="notice-card" hidden>
+              <p id="verification-message"></p>
+              <button class="secondary-button" id="resend-verification-button" type="button">Resend verification email</button>
+            </div>
+            <div class="profile-row">
+              <img id="me-avatar" alt="" />
+              <div>
+                <strong id="me-name"></strong>
+                <p id="me-handle"></p>
+              </div>
+            </div>
+            <button class="secondary-button" id="logout-button" type="button">Log out</button>
+          </div>
+        </div>
+      </header>
+
+      <main class="dashboard" id="dashboard" hidden>
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Friends</p>
+              <h2>Invite from your list</h2>
+            </div>
+          </div>
+          <form id="friend-form" class="stack-form">
+            <label for="friend-username">Add a friend by player name</label>
+            <div class="inline-form">
+              <input id="friend-username" name="username" placeholder="player_name" required />
+              <button class="primary-button" type="submit">Add friend</button>
+            </div>
+          </form>
+          <div id="friend-empty" class="empty-state">No friends added yet.</div>
+          <ul id="friend-list" class="card-list"></ul>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Session</p>
+              <h2>Create a shared lobby</h2>
+            </div>
+          </div>
+          <form id="session-form" class="stack-form">
+            <label for="session-name">Lobby name</label>
+            <div class="inline-form">
+              <input id="session-name" name="name" placeholder="Friday Squad" required />
+              <button class="primary-button" type="submit">Create session</button>
+            </div>
+          </form>
+          <div id="session-empty" class="empty-state">Create a session to start inviting people.</div>
+          <div id="session-card" hidden>
+            <div class="session-title-row">
+              <div>
+                <h3 id="session-name-output"></h3>
+                <p id="session-host-output"></p>
+              </div>
+              <span class="pill" id="session-status-output"></span>
+            </div>
+            <label for="session-link">Share link</label>
+            <div class="inline-form">
+              <input id="session-link" readonly />
+              <button class="secondary-button" id="copy-link-button" type="button">Copy</button>
+            </div>
+            <div class="qr-wrap">
+              <img id="qr-image" alt="Session QR code" />
+            </div>
+            <div>
+              <p class="eyebrow">Players</p>
+              <ul id="member-list" class="card-list compact"></ul>
+            </div>
+            <div>
+              <p class="eyebrow">Pending invites</p>
+              <ul id="invite-list" class="card-list compact"></ul>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Incoming</p>
+              <h2>Your invites</h2>
+            </div>
+          </div>
+          <div id="incoming-empty" class="empty-state">No pending invites right now.</div>
+          <ul id="incoming-list" class="card-list"></ul>
+        </section>
+      </main>
+    </div>
+
+    <template id="friend-item-template">
+      <li class="list-card">
+        <div class="profile-row">
+          <img class="avatar" alt="" />
+          <div>
+            <strong class="name"></strong>
+            <p class="handle"></p>
+          </div>
+        </div>
+        <button class="primary-button invite-button" type="button">Invite</button>
+      </li>
+    </template>
+
+    <template id="incoming-item-template">
+      <li class="list-card">
+        <div>
+          <strong class="name"></strong>
+          <p class="meta"></p>
+        </div>
+        <div class="action-row">
+          <button class="primary-button accept-button" type="button">Accept</button>
+          <button class="secondary-button decline-button" type="button">Decline</button>
+        </div>
+      </li>
+    </template>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

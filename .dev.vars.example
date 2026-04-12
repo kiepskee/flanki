@@ -1,0 +1,4 @@
+SESSION_SECRET=replace-with-a-long-random-secret
+APP_ORIGIN=http://127.0.0.1:8787
+RESEND_API_KEY=re_xxxxxxxxx
+EMAIL_FROM=Flanki <onboarding@example.com>
