@@ -1,6 +1,7 @@
 name = "flanki"
 main = "src/worker.js"
 compatibility_date = "2026-04-12"
+workers_dev = true
 
 [assets]
 directory = "./public"
@@ -9,4 +10,4 @@ binding = "ASSETS"
 [[d1_databases]]
 binding = "DB"
 database_name = "flanki-db"
-database_id = "replace-with-your-d1-database-id"
+database_id = "c751d178-ce61-432d-b4b2-ef442482ca6d"
