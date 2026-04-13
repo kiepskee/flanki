@@ -7,24 +7,21 @@ const state = {
   roadmap: [],
   leaderboard: [],
   joiningDeepLink: false,
-  verifyingEmail: false,
 };
 
 const elements = {
   signedOutView: document.querySelector("#signed-out-view"),
   signedInView: document.querySelector("#signed-in-view"),
   dashboard: document.querySelector("#dashboard"),
-  signupForm: document.querySelector("#signup-form"),
-  loginForm: document.querySelector("#login-form"),
-  forgotPasswordForm: document.querySelector("#forgot-password-form"),
-  resetPasswordForm: document.querySelector("#reset-password-form"),
+  facebookLoginButton: document.querySelector("#facebook-login-button"),
   meAvatar: document.querySelector("#me-avatar"),
   meName: document.querySelector("#me-name"),
   meHandle: document.querySelector("#me-handle"),
-  verificationBanner: document.querySelector("#verification-banner"),
-  verificationMessage: document.querySelector("#verification-message"),
-  resendVerificationButton: document.querySelector("#resend-verification-button"),
   logoutButton: document.querySelector("#logout-button"),
+  profilePanel: document.querySelector("#profile-panel"),
+  nickHelp: document.querySelector("#nick-help"),
+  nickForm: document.querySelector("#nick-form"),
+  nickUsername: document.querySelector("#nick-username"),
   friendForm: document.querySelector("#friend-form"),
   friendUsername: document.querySelector("#friend-username"),
   friendList: document.querySelector("#friend-list"),
@@ -93,20 +90,18 @@ function query() {
   return new URLSearchParams(window.location.search);
 }
 
+function replaceQuery(mutator) {
+  const url = new URL(window.location.href);
+  mutator(url.searchParams);
+  history.replaceState({}, "", url.pathname + url.search);
+}
+
 function getJoinTarget() {
   return window.location.pathname.startsWith("/join/") ? window.location.pathname : "/";
 }
 
-function showInfo(payload) {
-  if (payload?.devLink) {
-    alert(`${payload.message || payload.notice}\n\nDev link:\n${payload.devLink}`);
-  } else if (payload?.message || payload?.notice) {
-    alert(payload.message || payload.notice);
-  }
-}
-
-function updateResetVisibility() {
-  elements.resetPasswordForm.hidden = !query().get("reset");
+function hasPlayerNick() {
+  return Boolean(state.me?.hasPlayerNick && state.me?.username);
 }
 
 function toggleAuth() {
@@ -115,18 +110,25 @@ function toggleAuth() {
   elements.signedInView.hidden = !signedIn;
   elements.dashboard.hidden = !signedIn;
 
-  if (!signedIn) {
-    elements.verificationBanner.hidden = true;
-    return;
-  }
+  if (!signedIn) return;
 
   elements.meAvatar.src = state.me.avatarUrl;
   elements.meName.textContent = state.me.displayName;
-  elements.meHandle.textContent = `@${state.me.username}`;
-  elements.verificationBanner.hidden = state.me.emailVerified;
-  if (!state.me.emailVerified) {
-    elements.verificationMessage.textContent = state.authMessage || "Verify your email to secure your account.";
+  elements.meHandle.textContent = state.me.username ? `@${state.me.username}` : "Choose your player nick";
+}
+
+function renderProfilePanel() {
+  if (!state.me) {
+    elements.profilePanel.hidden = true;
+    return;
   }
+
+  elements.profilePanel.hidden = false;
+  elements.nickUsername.value = state.me.username || "";
+  elements.nickHelp.textContent = hasPlayerNick()
+    ? `Current nick: @${state.me.username}. You can update it any time.`
+    : state.authMessage || "Choose a unique nick so other players can find and invite you.";
+  elements.nickForm.querySelector("button").textContent = hasPlayerNick() ? "Update nick" : "Save nick";
 }
 
 function renderRoadmap() {
@@ -144,7 +146,7 @@ function renderLeaderboard() {
   for (const player of state.leaderboard) {
     const li = document.createElement("li");
     li.className = "list-card";
-    li.innerHTML = `<div><strong>${player.displayName}</strong><p class="meta">@${player.username} | rating ${player.rating} | wins ${player.wins}/${player.matchesPlayed} | accuracy ${player.accuracy}% | avg hits to finish ${player.avgHitsToFinish ?? "-"}</p></div>`;
+    li.innerHTML = `<div><strong>${player.displayName}</strong><p class="meta">${player.username ? `@${player.username}` : "nick pending"} | rating ${player.rating} | wins ${player.wins}/${player.matchesPlayed} | accuracy ${player.accuracy}% | avg hits to finish ${player.avgHitsToFinish ?? "-"}</p></div>`;
     elements.leaderboardList.appendChild(li);
   }
 }
@@ -152,14 +154,18 @@ function renderLeaderboard() {
 function renderFriends() {
   elements.friendList.innerHTML = "";
   elements.friendEmpty.hidden = state.friends.length > 0;
+  const friendFormDisabled = !hasPlayerNick();
+  elements.friendUsername.disabled = friendFormDisabled;
+  elements.friendForm.querySelector("button").disabled = friendFormDisabled;
+  elements.friendUsername.placeholder = friendFormDisabled ? "Save your nick first" : "player_nick";
 
   for (const friend of state.friends) {
     const item = elements.friendTemplate.content.firstElementChild.cloneNode(true);
     item.querySelector(".avatar").src = friend.avatarUrl;
     item.querySelector(".name").textContent = friend.displayName;
-    item.querySelector(".handle").textContent = `@${friend.username}`;
+    item.querySelector(".handle").textContent = friend.username ? `@${friend.username}` : "nick pending";
     const button = item.querySelector(".invite-button");
-    const canInvite = state.session && state.session.match.status !== "live";
+    const canInvite = hasPlayerNick() && state.session && state.session.match.status !== "live";
     button.disabled = !canInvite;
     button.textContent = !state.session ? "Create session first" : state.session.match.status === "live" ? "Match live" : "Invite";
     button.addEventListener("click", async () => {
@@ -178,7 +184,7 @@ function renderFriends() {
 }
 
 function populateCaptainSelects(members) {
-  const options = members.map((member) => `<option value="${member.id}">${member.displayName}</option>`).join("");
+  const options = members.map((member) => `<option value="${member.id}">${member.displayName}${member.username ? ` (@${member.username})` : ""}</option>`).join("");
   elements.captainASelect.innerHTML = options;
   elements.captainBSelect.innerHTML = options;
   if (members[1]) elements.captainBSelect.value = members[1].id;
@@ -227,7 +233,7 @@ function renderTeamList(listElement, teamSlot, players) {
     const statusBits = [`#${member.teamOrder || index + 1}`];
     if (member.isCaptain) statusBits.push("captain");
     if (member.isOut) statusBits.push("out");
-    li.innerHTML = `<div><strong>${member.displayName}</strong><p class="meta">@${member.username} | ${statusBits.join(" | ")}</p></div>`;
+    li.innerHTML = `<div><strong>${member.displayName}</strong><p class="meta">${member.username ? `@${member.username}` : "nick pending"} | ${statusBits.join(" | ")}</p></div>`;
 
     if (canManageSession(state.session) && state.session.match.status !== "live" && players.length > 1) {
       const controls = document.createElement("div");
@@ -268,8 +274,8 @@ function renderAvailablePlayers(session) {
   for (const member of players) {
     const li = document.createElement("li");
     li.className = "list-card";
-    li.innerHTML = `<div><strong>${member.displayName}</strong><p class="meta">@${member.username}</p></div>`;
-    if (session.teams.mode === "captains" && canManageSession(session) && session.match.status !== "live") {
+    li.innerHTML = `<div><strong>${member.displayName}</strong><p class="meta">${member.username ? `@${member.username}` : "nick pending"}</p></div>`;
+    if (session.teams.mode === "captains" && canManageSession(session) && session.match.status !== "live" && hasPlayerNick()) {
       const button = document.createElement("button");
       button.className = "primary-button";
       button.type = "button";
@@ -297,7 +303,7 @@ function renderPendingInvites(session) {
   for (const invite of session.pendingInvites) {
     const li = document.createElement("li");
     li.className = "list-card";
-    li.innerHTML = `<div><strong>${invite.displayName}</strong><p class="meta">@${invite.username} | pending</p></div>`;
+    li.innerHTML = `<div><strong>${invite.displayName}</strong><p class="meta">${invite.username ? `@${invite.username}` : "nick pending"} | pending</p></div>`;
     elements.inviteList.appendChild(li);
   }
 }
@@ -337,9 +343,19 @@ function renderMatchPanel(session) {
 function renderSession() {
   const session = state.session;
   const hasSession = Boolean(session);
+  const nickReady = hasPlayerNick();
+  const sessionNameInput = document.querySelector("#session-name");
+  sessionNameInput.disabled = !nickReady;
+  elements.sessionForm.querySelector("button").disabled = !nickReady;
+  sessionNameInput.placeholder = nickReady ? "Tonight's Flanki session" : "Save your nick first";
   elements.sessionEmpty.hidden = hasSession;
   elements.sessionCard.hidden = !hasSession;
-  if (!hasSession) return;
+  if (!hasSession) {
+    elements.sessionEmpty.textContent = nickReady
+      ? "Create a session to invite players and build teams."
+      : "Save your player nick first, then create your session.";
+    return;
+  }
 
   const teamAPlayers = teamPlayers(session, "A");
   const teamBPlayers = teamPlayers(session, "B");
@@ -370,11 +386,11 @@ function renderSession() {
   }
 
   const matchLocked = session.match.status === "live";
-  elements.autoTeamsButton.disabled = !canManageSession(session) || matchLocked;
-  elements.captainDraftButton.disabled = !canManageSession(session) || matchLocked;
-  elements.startDraftButton.disabled = !canManageSession(session) || matchLocked;
+  elements.autoTeamsButton.disabled = !nickReady || !canManageSession(session) || matchLocked;
+  elements.captainDraftButton.disabled = !nickReady || !canManageSession(session) || matchLocked;
+  elements.startDraftButton.disabled = !nickReady || !canManageSession(session) || matchLocked;
   elements.startMatchButton.disabled =
-    !canManageSession(session) || matchLocked || session.teams.unassigned.length > 0 || !teamAPlayers.length || !teamBPlayers.length;
+    !nickReady || !canManageSession(session) || matchLocked || session.teams.unassigned.length > 0 || !teamAPlayers.length || !teamBPlayers.length;
 }
 
 function renderIncomingInvites() {
@@ -385,7 +401,10 @@ function renderIncomingInvites() {
     const item = elements.incomingTemplate.content.firstElementChild.cloneNode(true);
     item.querySelector(".name").textContent = invite.sessionName;
     item.querySelector(".meta").textContent = `From ${invite.inviter.displayName} | ${invite.createdAtLabel}`;
-    item.querySelector(".accept-button").addEventListener("click", async () => {
+    const acceptButton = item.querySelector(".accept-button");
+    acceptButton.disabled = !hasPlayerNick();
+    acceptButton.textContent = hasPlayerNick() ? "Accept" : "Save nick first";
+    acceptButton.addEventListener("click", async () => {
       await request(`/api/invites/${invite.id}/accept`, { method: "POST" });
       await refreshDashboard();
     });
@@ -397,28 +416,19 @@ function renderIncomingInvites() {
   }
 }
 
-async function maybeVerifyEmail() {
-  const token = query().get("verify");
-  if (!token || state.verifyingEmail) return;
-  state.verifyingEmail = true;
-  try {
-    const payload = await request("/api/auth/verify-email", {
-      method: "POST",
-      body: JSON.stringify({ token }),
-    });
-    const url = new URL(window.location.href);
-    url.searchParams.delete("verify");
-    history.replaceState({}, "", url.pathname + url.search);
-    alert(payload.message);
-    await refreshDashboard();
-  } finally {
-    state.verifyingEmail = false;
-  }
+function maybeShowAuthError() {
+  const authError = query().get("auth_error");
+  if (!authError) return;
+  const messages = {
+    facebook_login_failed: "Facebook sign-in could not be completed. Please try again.",
+  };
+  alert(messages[authError] || "Sign-in could not be completed.");
+  replaceQuery((params) => params.delete("auth_error"));
 }
 
 async function maybeJoinDeepLink() {
   const joinMatch = window.location.pathname.match(/^\/join\/([a-zA-Z0-9_-]+)$/);
-  if (!joinMatch || !state.me || state.joiningDeepLink) return;
+  if (!joinMatch || !state.me || !hasPlayerNick() || state.joiningDeepLink) return;
   state.joiningDeepLink = true;
   try {
     await request(`/api/join/${joinMatch[1]}`, { method: "POST" });
@@ -439,14 +449,13 @@ async function refreshDashboard() {
   state.roadmap = payload.roadmap?.nextUp || [];
   state.leaderboard = payload.leaderboard || [];
 
-  updateResetVisibility();
   toggleAuth();
+  renderProfilePanel();
   renderRoadmap();
   renderLeaderboard();
   renderFriends();
   renderSession();
   renderIncomingInvites();
-  await maybeVerifyEmail();
   await maybeJoinDeepLink();
 }
 
@@ -458,68 +467,19 @@ async function logThrow(wasHit, finishedBeer) {
   await refreshDashboard();
 }
 
-elements.signupForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const formData = new FormData(elements.signupForm);
-  const payload = await request("/api/auth/signup", {
-    method: "POST",
-    body: JSON.stringify({
-      displayName: formData.get("displayName"),
-      username: formData.get("username"),
-      email: formData.get("email"),
-      password: formData.get("password"),
-      next: getJoinTarget(),
-    }),
-  });
-  elements.signupForm.reset();
-  showInfo(payload);
-  await refreshDashboard();
+elements.facebookLoginButton.addEventListener("click", () => {
+  window.location.href = `/api/auth/facebook/start?next=${encodeURIComponent(getJoinTarget())}`;
 });
 
-elements.loginForm.addEventListener("submit", async (event) => {
+elements.nickForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const formData = new FormData(elements.loginForm);
-  await request("/api/auth/login", {
+  const payload = await request("/api/profile/nick", {
     method: "POST",
     body: JSON.stringify({
-      identifier: formData.get("identifier"),
-      password: formData.get("password"),
-      next: getJoinTarget(),
+      username: new FormData(elements.nickForm).get("username"),
     }),
   });
-  elements.loginForm.reset();
-  await refreshDashboard();
-});
-
-elements.forgotPasswordForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const payload = await request("/api/auth/forgot-password", {
-    method: "POST",
-    body: JSON.stringify({ email: new FormData(elements.forgotPasswordForm).get("email") }),
-  });
-  elements.forgotPasswordForm.reset();
-  showInfo(payload);
-});
-
-elements.resetPasswordForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const payload = await request("/api/auth/reset-password", {
-    method: "POST",
-    body: JSON.stringify({
-      token: query().get("reset"),
-      password: new FormData(elements.resetPasswordForm).get("password"),
-    }),
-  });
-  elements.resetPasswordForm.reset();
-  const url = new URL(window.location.href);
-  url.searchParams.delete("reset");
-  history.replaceState({}, "", url.pathname + url.search);
-  updateResetVisibility();
   alert(payload.message);
-});
-
-elements.resendVerificationButton.addEventListener("click", async () => {
-  showInfo(await request("/api/auth/resend-verification", { method: "POST" }));
   await refreshDashboard();
 });
 
@@ -589,7 +549,7 @@ elements.copyLinkButton.addEventListener("click", async () => {
   }, 1200);
 });
 
-updateResetVisibility();
+maybeShowAuthError();
 refreshDashboard().catch((error) => {
   console.error(error);
   toggleAuth();

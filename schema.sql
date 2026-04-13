@@ -1,10 +1,11 @@
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
-  email TEXT NOT NULL UNIQUE,
-  username TEXT NOT NULL UNIQUE,
+  facebook_id TEXT UNIQUE,
+  email TEXT UNIQUE,
+  username TEXT UNIQUE,
   display_name TEXT NOT NULL,
-  password_hash TEXT NOT NULL,
-  email_verified INTEGER NOT NULL DEFAULT 0,
+  password_hash TEXT,
+  email_verified INTEGER NOT NULL DEFAULT 1,
   avatar_url TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -123,6 +124,7 @@ CREATE TABLE IF NOT EXISTS player_records (
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_facebook_id ON users(facebook_id);
 CREATE INDEX IF NOT EXISTS idx_users_verified ON users(email_verified);
 CREATE INDEX IF NOT EXISTS idx_auth_tokens_lookup ON auth_tokens(token_hash, type, used_at);
 CREATE INDEX IF NOT EXISTS idx_auth_tokens_user_type ON auth_tokens(user_id, type, used_at);

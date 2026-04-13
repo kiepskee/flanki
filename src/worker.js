@@ -1,4 +1,5 @@
 const SESSION_COOKIE = "flanki_session";
+const FACEBOOK_OAUTH_COOKIE = "flanki_facebook_oauth";
 const TOKEN_TYPE_VERIFY = "email_verify";
 const TOKEN_TYPE_RESET = "password_reset";
 const TEAM_A = "A";
@@ -30,15 +31,9 @@ async function handleRequest(request, env) {
   const url = new URL(request.url);
 
   if (url.pathname === "/api/bootstrap" && request.method === "GET") return handleBootstrap(request, env, url);
-  if (url.pathname === "/api/auth/signup" && request.method === "POST") return handleSignUp(request, env, url);
-  if (url.pathname === "/api/auth/login" && request.method === "POST") return handleLogin(request, env, url);
-  if (url.pathname === "/api/auth/verify-email" && request.method === "POST") return handleVerifyEmail(request, env);
-  if (url.pathname === "/api/auth/forgot-password" && request.method === "POST") return handleForgotPassword(request, env, url);
-  if (url.pathname === "/api/auth/reset-password" && request.method === "POST") return handleResetPassword(request, env);
-
-  if (url.pathname === "/api/auth/resend-verification" && request.method === "POST") {
-    return handleResendVerification(env, await requireUser(request, env), url);
-  }
+  if (url.pathname === "/api/auth/facebook/start" && request.method === "GET") return handleFacebookStart(request, env, url);
+  if (url.pathname === "/api/auth/facebook/callback" && request.method === "GET") return handleFacebookCallback(request, env, url);
+  if (url.pathname === "/api/profile/nick" && request.method === "POST") return handleUpdateNick(request, env, await requireUser(request, env));
 
   if (url.pathname === "/api/logout" && request.method === "POST") {
     return new Response(null, { status: 204, headers: sessionCookieHeaders(url, "", 0) });
@@ -124,7 +119,7 @@ async function handleBootstrap(request, env, url) {
     friends: await listFriends(env, user.id),
     activeSession: await getLatestSessionForUser(env, user.id, url.origin),
     incomingInvites: await listIncomingInvites(env, user.id),
-    authMessage: user.email_verified ? null : "Verify your email to secure your Flanki profile and recover your password.",
+    authMessage: user.username ? null : "Add your player nick to unlock friend search, invites, and Flanki sessions.",
     roadmap: getRoadmap(),
     leaderboard: await getLeaderboard(env),
   });
@@ -136,131 +131,64 @@ function getRoadmap() {
   };
 }
 
-async function handleSignUp(request, env, url) {
-  requireConfig(env, ["SESSION_SECRET"]);
-  const body = await request.json();
-  const email = normalizeEmail(body.email);
-  const username = normalizeUsername(body.username);
-  const displayName = normalizeDisplayName(body.displayName);
-  const password = String(body.password || "");
-  const next = sanitizeNextPath(body.next);
-  validatePassword(password);
+async function handleFacebookStart(request, env, url) {
+  requireConfig(env, ["SESSION_SECRET", "FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET"]);
+  const next = sanitizeNextPath(url.searchParams.get("next") || "/");
+  const stateToken = await signTemporaryToken(env.SESSION_SECRET, {
+    next,
+    nonce: randomId(12),
+    exp: Date.now() + 10 * 60 * 1000,
+  });
+  const redirectUri = buildFacebookRedirectUri(env, url);
+  const facebookUrl = new URL("https://www.facebook.com/dialog/oauth");
+  facebookUrl.searchParams.set("client_id", env.FACEBOOK_APP_ID);
+  facebookUrl.searchParams.set("redirect_uri", redirectUri);
+  facebookUrl.searchParams.set("state", stateToken);
+  facebookUrl.searchParams.set("scope", "public_profile,email");
+  facebookUrl.searchParams.set("response_type", "code");
 
-  const existing = await env.DB.prepare(
-    "SELECT email, username FROM users WHERE lower(email) = lower(?) OR lower(username) = lower(?)",
-  )
-    .bind(email, username)
-    .all();
+  const headers = oauthStateCookieHeaders(url, stateToken, 10 * 60);
+  headers.set("Location", facebookUrl.toString());
+  return new Response(null, { status: 302, headers });
+}
 
-  for (const row of existing.results || []) {
-    if (row.email && row.email.toLowerCase() === email) throw new HttpError(409, "That email is already in use.");
-    if (row.username && row.username.toLowerCase() === username) throw new HttpError(409, "That player name is already taken.");
+async function handleFacebookCallback(request, env, url) {
+  requireConfig(env, ["SESSION_SECRET", "FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET"]);
+  const oauthStateCookie = parseCookies(request.headers.get("Cookie"))[FACEBOOK_OAUTH_COOKIE];
+  const state = String(url.searchParams.get("state") || "");
+  const code = String(url.searchParams.get("code") || "");
+  const errorReason = String(url.searchParams.get("error_reason") || url.searchParams.get("error") || "");
+  const statePayload = oauthStateCookie && oauthStateCookie === state ? await verifyTemporaryToken(env.SESSION_SECRET, state) : null;
+  const next = sanitizeNextPath(statePayload?.next || "/");
+
+  if (errorReason || !code || !statePayload) {
+    return authRedirect(url, `${next}${next.includes("?") ? "&" : "?"}auth_error=facebook_login_failed`, "", 0);
   }
 
-  const user = {
-    id: `usr_${randomId()}`,
-    email,
-    username,
-    displayName,
-    passwordHash: await hashPassword(password),
-    emailVerified: 0,
-    avatarUrl: avatarForDisplayName(displayName),
-  };
-
-  await env.DB.batch([
-    env.DB.prepare(
-      "INSERT INTO users (id, email, username, display_name, password_hash, email_verified, avatar_url) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    ).bind(user.id, user.email, user.username, user.displayName, user.passwordHash, user.emailVerified, user.avatarUrl),
-    env.DB.prepare("INSERT OR IGNORE INTO player_records (user_id) VALUES (?)").bind(user.id),
-  ]);
-
-  const verification = await issueToken(env, user.id, TOKEN_TYPE_VERIFY, 24);
-  const delivery = await sendVerificationEmail(env, url, user, verification.rawToken);
-  return createAuthResponse(url, env, user, next, 201, { notice: delivery.notice, devLink: delivery.devLink });
+  const accessToken = await exchangeFacebookCode(env, url, code);
+  const facebookProfile = await fetchFacebookProfile(accessToken);
+  const user = await findOrCreateFacebookUser(env, facebookProfile);
+  const sessionValue = await signSessionCookie(env.SESSION_SECRET, user);
+  return authRedirect(url, next, sessionValue, 60 * 60 * 24 * 30);
 }
 
-async function handleLogin(request, env, url) {
-  requireConfig(env, ["SESSION_SECRET"]);
-  const body = await request.json();
-  const identifier = String(body.identifier || "").trim().toLowerCase();
-  const password = String(body.password || "");
-  const next = sanitizeNextPath(body.next);
-  if (!identifier || !password) throw new HttpError(400, "Enter your player name or email and password.");
+async function handleUpdateNick(request, env, user) {
+  const username = normalizeUsername((await request.json()).username);
+  const existing = await env.DB.prepare("SELECT id FROM users WHERE lower(username) = lower(?) LIMIT 1").bind(username).first();
+  if (existing && existing.id !== user.id) throw new HttpError(409, "That player nick is already taken.");
 
-  const user = await env.DB.prepare(
-    "SELECT id, email, username, display_name, password_hash, email_verified, avatar_url FROM users WHERE lower(email) = ? OR lower(username) = ? LIMIT 1",
+  await env.DB.prepare("UPDATE users SET username = ? WHERE id = ?").bind(username, user.id).run();
+  const updated = await env.DB.prepare(
+    "SELECT id, facebook_id, email, username, display_name, email_verified, avatar_url FROM users WHERE id = ? LIMIT 1",
   )
-    .bind(identifier, identifier)
+    .bind(user.id)
     .first();
 
-  if (!user || !(await verifyPassword(password, user.password_hash))) throw new HttpError(401, "Invalid sign-in details.");
-  return createAuthResponse(url, env, rowToSessionUser(user), next);
-}
-
-async function handleVerifyEmail(request, env) {
-  const token = String((await request.json()).token || "");
-  if (!token) throw new HttpError(400, "Missing verification token.");
-  const record = await resolveValidToken(env, token, TOKEN_TYPE_VERIFY);
-  if (!record) throw new HttpError(400, "That verification link is invalid or expired.");
-
-  await env.DB.batch([
-    env.DB.prepare("UPDATE users SET email_verified = 1 WHERE id = ?").bind(record.user_id),
-    env.DB.prepare("UPDATE auth_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND type = ? AND used_at IS NULL").bind(
-      record.user_id,
-      TOKEN_TYPE_VERIFY,
-    ),
-  ]);
-
-  return json({ ok: true, message: "Email verified. Your Flanki profile is confirmed." });
-}
-
-async function handleResendVerification(env, user, url) {
-  if (user.email_verified) return json({ ok: true, message: "Your email is already verified." });
-  await expireUnusedTokens(env, user.id, TOKEN_TYPE_VERIFY);
-  const verification = await issueToken(env, user.id, TOKEN_TYPE_VERIFY, 24);
-  const delivery = await sendVerificationEmail(env, url, adaptUserRow(user), verification.rawToken);
-  return json({ ok: true, message: delivery.notice, devLink: delivery.devLink });
-}
-
-async function handleForgotPassword(request, env, url) {
-  const email = normalizeEmail((await request.json()).email);
-  const user = await env.DB.prepare(
-    "SELECT id, email, username, display_name, email_verified, avatar_url FROM users WHERE lower(email) = lower(?) LIMIT 1",
-  )
-    .bind(email)
-    .first();
-
-  if (!user) return json({ ok: true, message: "If that email exists, a reset link is on its way." });
-
-  await expireUnusedTokens(env, user.id, TOKEN_TYPE_RESET);
-  const resetToken = await issueToken(env, user.id, TOKEN_TYPE_RESET, 2);
-  const delivery = await sendPasswordResetEmail(env, url, adaptUserRow(user), resetToken.rawToken);
-  return json({ ok: true, message: delivery.notice, devLink: delivery.devLink });
-}
-
-async function handleResetPassword(request, env) {
-  const body = await request.json();
-  const token = String(body.token || "");
-  const password = String(body.password || "");
-  if (!token) throw new HttpError(400, "Missing reset token.");
-  validatePassword(password);
-
-  const record = await resolveValidToken(env, token, TOKEN_TYPE_RESET);
-  if (!record) throw new HttpError(400, "That reset link is invalid or expired.");
-
-  const passwordHash = await hashPassword(password);
-  await env.DB.batch([
-    env.DB.prepare("UPDATE users SET password_hash = ? WHERE id = ?").bind(passwordHash, record.user_id),
-    env.DB.prepare("UPDATE auth_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND type = ? AND used_at IS NULL").bind(
-      record.user_id,
-      TOKEN_TYPE_RESET,
-    ),
-  ]);
-
-  return json({ ok: true, message: "Password updated. You can sign in with the new password now." });
+  return json({ me: publicUser(updated), message: "Player nick saved." });
 }
 
 async function handleAddFriend(request, env, user) {
+  assertHasPlayerNick(user);
   const username = normalizeUsername((await request.json()).username);
   const friend = await env.DB.prepare("SELECT id, username, display_name, avatar_url, email_verified FROM users WHERE lower(username) = lower(?)")
     .bind(username)
@@ -278,6 +206,7 @@ async function handleAddFriend(request, env, user) {
 }
 
 async function handleCreateSession(request, env, user, url) {
+  assertHasPlayerNick(user);
   const body = await request.json();
   const name = String(body.name || "").trim();
   if (!name) throw new HttpError(400, "Choose a Flanki session name.");
@@ -297,6 +226,7 @@ async function handleCreateSession(request, env, user, url) {
 }
 
 async function handleInviteFriend(request, env, user, sessionId) {
+  assertHasPlayerNick(user);
   const session = await requireOwnedSession(env, sessionId, user.id);
   ensureMatchNotLive(session.match_status, "You cannot invite players once the match is live.");
   const friendId = String((await request.json()).friendId || "");
@@ -317,6 +247,7 @@ async function handleInviteFriend(request, env, user, sessionId) {
 }
 
 async function handleAutoTeams(env, user, sessionId, origin) {
+  assertHasPlayerNick(user);
   const session = await requireOwnedSession(env, sessionId, user.id);
   ensureMatchNotLive(session.match_status, "You cannot rebuild teams during a live match.");
   const members = await listSessionMembers(env, session.id);
@@ -347,6 +278,7 @@ async function handleAutoTeams(env, user, sessionId, origin) {
 }
 
 async function handleStartCaptainDraft(request, env, user, sessionId, origin) {
+  assertHasPlayerNick(user);
   const session = await requireOwnedSession(env, sessionId, user.id);
   ensureMatchNotLive(session.match_status, "You cannot start a captain draft during a live match.");
   const body = await request.json();
@@ -373,6 +305,7 @@ async function handleStartCaptainDraft(request, env, user, sessionId, origin) {
 }
 
 async function handleDraftPick(request, env, user, sessionId, origin) {
+  assertHasPlayerNick(user);
   const pickedUserId = String((await request.json()).userId || "");
   if (!pickedUserId) throw new HttpError(400, "Choose a player to draft.");
 
@@ -421,6 +354,7 @@ async function handleDraftPick(request, env, user, sessionId, origin) {
 }
 
 async function handleReorderTeam(request, env, user, sessionId, origin) {
+  assertHasPlayerNick(user);
   const session = await requireOwnedSession(env, sessionId, user.id);
   ensureMatchNotLive(session.match_status, "You cannot reorder players during a live match.");
   const body = await request.json();
@@ -446,6 +380,7 @@ async function handleReorderTeam(request, env, user, sessionId, origin) {
 }
 
 async function handleMatchStart(env, user, sessionId, origin) {
+  assertHasPlayerNick(user);
   const session = await requireOwnedSession(env, sessionId, user.id);
   ensureMatchNotLive(session.match_status, "The match is already live.");
   const members = await listSessionMembers(env, session.id);
@@ -477,6 +412,7 @@ async function handleMatchStart(env, user, sessionId, origin) {
 }
 
 async function handleMatchThrow(request, env, user, sessionId, origin) {
+  assertHasPlayerNick(user);
   const body = await request.json();
   const wasHit = Boolean(body.wasHit);
   const finishedBeer = Boolean(body.finishedBeer);
@@ -557,6 +493,7 @@ async function handleInviteResponse(env, user, inviteId, nextStatus) {
     env.DB.prepare("UPDATE session_invites SET status = ?, responded_at = CURRENT_TIMESTAMP WHERE id = ?").bind(nextStatus, inviteId),
   ];
   if (nextStatus === "accepted") {
+    assertHasPlayerNick(user);
     ensureMatchNotLive(invite.match_status, "You cannot join a session after the match has started.");
     operations.push(
       env.DB.prepare("INSERT OR IGNORE INTO session_members (session_id, user_id, role, team_slot, team_order, is_captain, is_out) VALUES (?, ?, 'player', NULL, NULL, 0, 0)")
@@ -569,6 +506,7 @@ async function handleInviteResponse(env, user, inviteId, nextStatus) {
 }
 
 async function handleJoinByToken(env, user, token, url) {
+  assertHasPlayerNick(user);
   const session = await env.DB.prepare("SELECT id, match_status FROM game_sessions WHERE invite_token = ?").bind(token).first();
   if (!session) throw new HttpError(404, "That session link is no longer valid.");
   ensureMatchNotLive(session.match_status, "You cannot join a session after the match has started.");
@@ -603,7 +541,6 @@ async function createAuthResponse(url, env, user, next = "/", status = 200, extr
         id: user.id,
         username: user.username,
         display_name: user.displayName,
-        email_verified: user.emailVerified,
         avatar_url: user.avatarUrl,
       }),
       next,
@@ -620,7 +557,7 @@ async function getOptionalUser(request, env) {
   const session = await verifySessionCookie(env.SESSION_SECRET, sessionCookie);
   if (!session) return null;
   return (
-    (await env.DB.prepare("SELECT id, email, username, display_name, email_verified, avatar_url FROM users WHERE id = ?")
+    (await env.DB.prepare("SELECT id, facebook_id, email, username, display_name, email_verified, avatar_url FROM users WHERE id = ?")
       .bind(session.sub)
       .first()) || null
   );
@@ -957,6 +894,7 @@ async function getLeaderboard(env) {
         pr.rating
       FROM player_records pr
       JOIN users u ON u.id = pr.user_id
+      WHERE u.username IS NOT NULL
       ORDER BY pr.rating DESC, pr.ranking_points DESC, pr.total_hits DESC
       LIMIT 20
     `,
@@ -1071,6 +1009,132 @@ async function finalizeMatch(env, sessionId, winnerTeam) {
   await env.DB.batch(updates);
 }
 
+async function findOrCreateFacebookUser(env, facebookProfile) {
+  const facebookId = String(facebookProfile.id || "").trim();
+  const displayName = normalizeDisplayName(facebookProfile.name);
+  const avatarUrl = facebookProfile.picture?.data?.url || avatarForDisplayName(displayName);
+  const email = normalizeOptionalEmail(facebookProfile.email);
+
+  let user = await env.DB.prepare(
+    "SELECT id, facebook_id, email, username, display_name, email_verified, avatar_url FROM users WHERE facebook_id = ? LIMIT 1",
+  )
+    .bind(facebookId)
+    .first();
+
+  if (!user && email) {
+    user = await env.DB.prepare(
+      "SELECT id, facebook_id, email, username, display_name, email_verified, avatar_url FROM users WHERE lower(email) = lower(?) LIMIT 1",
+    )
+      .bind(email)
+      .first();
+  }
+
+  if (user) {
+    await env.DB.prepare(
+      "UPDATE users SET facebook_id = ?, email = COALESCE(?, email), display_name = ?, avatar_url = ?, email_verified = 1 WHERE id = ?",
+    )
+      .bind(facebookId, email, displayName, avatarUrl, user.id)
+      .run();
+  } else {
+    const id = `usr_${randomId()}`;
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO users (id, facebook_id, email, username, display_name, password_hash, email_verified, avatar_url) VALUES (?, ?, ?, NULL, ?, NULL, 1, ?)",
+      ).bind(id, facebookId, email, displayName, avatarUrl),
+      env.DB.prepare("INSERT OR IGNORE INTO player_records (user_id) VALUES (?)").bind(id),
+    ]);
+    user = { id };
+  }
+
+  const freshUser = await env.DB.prepare(
+    "SELECT id, facebook_id, email, username, display_name, email_verified, avatar_url FROM users WHERE id = ? LIMIT 1",
+  )
+    .bind(user.id)
+    .first();
+
+  return {
+    id: freshUser.id,
+    facebookId: freshUser.facebook_id,
+    email: freshUser.email,
+    username: freshUser.username,
+    displayName: freshUser.display_name,
+    emailVerified: freshUser.email_verified,
+    avatarUrl: freshUser.avatar_url || avatarForDisplayName(freshUser.display_name),
+  };
+}
+
+async function exchangeFacebookCode(env, url, code) {
+  const response = await fetch("https://graph.facebook.com/oauth/access_token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+    body: new URLSearchParams({
+      client_id: env.FACEBOOK_APP_ID,
+      client_secret: env.FACEBOOK_APP_SECRET,
+      redirect_uri: buildFacebookRedirectUri(env, url),
+      code,
+    }).toString(),
+  });
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload?.access_token) {
+    throw new HttpError(502, "Facebook sign-in could not be completed.");
+  }
+
+  return payload.access_token;
+}
+
+async function fetchFacebookProfile(accessToken) {
+  const profileUrl = new URL("https://graph.facebook.com/me");
+  profileUrl.searchParams.set("fields", "id,name,email,picture.width(200).height(200)");
+  profileUrl.searchParams.set("access_token", accessToken);
+  const response = await fetch(profileUrl);
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload?.id || !payload?.name) throw new HttpError(502, "Facebook profile data is unavailable.");
+  return payload;
+}
+
+function buildFacebookRedirectUri(env, url) {
+  return new URL("/api/auth/facebook/callback", env.APP_ORIGIN || url.origin).toString();
+}
+
+async function signTemporaryToken(secret, payload) {
+  const encoded = base64urlEncode(JSON.stringify(payload));
+  return `${encoded}.${await hmacSha256(secret, encoded)}`;
+}
+
+async function verifyTemporaryToken(secret, value) {
+  const [payload, signature] = String(value || "").split(".");
+  if (!payload || !signature) return null;
+  const expected = await hmacSha256(secret, payload);
+  if (!timingSafeEqual(new TextEncoder().encode(expected), new TextEncoder().encode(signature))) return null;
+  try {
+    const parsed = JSON.parse(base64urlDecode(payload));
+    return parsed.exp > Date.now() ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function authRedirect(url, location, sessionValue, sessionMaxAge) {
+  const headers = sessionCookieHeaders(url, sessionValue, sessionMaxAge);
+  headers.append(
+    "Set-Cookie",
+    buildCookie(FACEBOOK_OAUTH_COOKIE, "", {
+      maxAge: 0,
+      path: "/",
+      httpOnly: true,
+      sameSite: "Lax",
+      secure: url.protocol === "https:",
+    }),
+  );
+  headers.set("Location", location);
+  return new Response(null, { status: 302, headers });
+}
+
+function assertHasPlayerNick(user) {
+  if (!user?.username) throw new HttpError(400, "Add your player nick first.");
+}
+
 function rowToSessionUser(row) {
   return {
     id: row.id,
@@ -1085,9 +1149,9 @@ function rowToSessionUser(row) {
 function publicUser(user) {
   return {
     id: user.id,
-    username: user.username,
+    username: user.username || null,
     displayName: user.display_name || user.displayName,
-    emailVerified: Boolean(user.email_verified ?? user.emailVerified),
+    hasPlayerNick: Boolean(user.username),
     avatarUrl: user.avatar_url || user.avatarUrl || avatarForDisplayName(user.display_name || user.displayName),
   };
 }
@@ -1107,6 +1171,12 @@ function normalizeEmail(value) {
   const email = String(value || "").trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, "Enter a valid email address.");
   return email;
+}
+
+function normalizeOptionalEmail(value) {
+  const email = String(value || "").trim().toLowerCase();
+  if (!email) return null;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
 }
 
 function normalizeUsername(value) {
@@ -1192,6 +1262,21 @@ function sessionCookieHeaders(url, value, maxAge) {
   headers.append(
     "Set-Cookie",
     buildCookie(SESSION_COOKIE, value, {
+      maxAge,
+      path: "/",
+      httpOnly: true,
+      sameSite: "Lax",
+      secure: url.protocol === "https:",
+    }),
+  );
+  return headers;
+}
+
+function oauthStateCookieHeaders(url, value, maxAge) {
+  const headers = new Headers();
+  headers.append(
+    "Set-Cookie",
+    buildCookie(FACEBOOK_OAUTH_COOKIE, value, {
       maxAge,
       path: "/",
       httpOnly: true,

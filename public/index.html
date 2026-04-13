@@ -15,10 +15,6 @@
           <p class="subcopy">Create a lobby, build teams, run the throw order, and track live Flanki stats and ranking.</p>
         </div>
         <div id="signed-in-view" class="topbar-card" hidden>
-          <div id="verification-banner" class="notice-card" hidden>
-            <p id="verification-message"></p>
-            <button class="secondary-button" id="resend-verification-button" type="button">Resend verification</button>
-          </div>
           <div class="profile-row">
             <img id="me-avatar" alt="" />
             <div>
@@ -33,39 +29,37 @@
       <main>
         <section id="signed-out-view" class="stack-panel">
           <article class="panel">
-            <h2>Create player profile</h2>
-            <form id="signup-form" class="stack-form">
-              <input id="signup-display-name" name="displayName" placeholder="Display name" required />
-              <input id="signup-username" name="username" placeholder="Player name" required />
-              <input id="signup-email" name="email" type="email" placeholder="Email address" required />
-              <input id="signup-password" name="password" type="password" placeholder="Password" required />
-              <button class="primary-button" type="submit">Create account</button>
-            </form>
+            <h2>Continue with Facebook</h2>
+            <p class="meta">Use your Facebook name and profile photo to sign in. Right after login you can add your Flanki player nick.</p>
+            <button class="primary-button top-gap" id="facebook-login-button" type="button">Continue with Facebook</button>
           </article>
 
           <article class="panel">
-            <h2>Sign in</h2>
-            <form id="login-form" class="stack-form">
-              <input id="login-identifier" name="identifier" placeholder="Email or player name" required />
-              <input id="login-password" name="password" type="password" placeholder="Password" required />
-              <button class="secondary-button" type="submit">Sign in</button>
-            </form>
-            <form id="forgot-password-form" class="stack-form top-gap">
-              <label for="forgot-email">Forgot password?</label>
-              <div class="inline-form">
-                <input id="forgot-email" name="email" type="email" placeholder="Email address" required />
-                <button class="secondary-button" type="submit">Send link</button>
-              </div>
-            </form>
-            <form id="reset-password-form" class="stack-form top-gap" hidden>
-              <label for="reset-password">Choose a new password</label>
-              <input id="reset-password" name="password" type="password" placeholder="New password" required />
-              <button class="primary-button" type="submit">Update password</button>
-            </form>
+            <h2>How identity works</h2>
+            <ul class="card-list compact">
+              <li class="list-card"><div><strong>Facebook login</strong><p class="meta">Your display name and profile photo come from Facebook.</p></div></li>
+              <li class="list-card"><div><strong>Player nick</strong><p class="meta">You still choose your own unique Flanki nick for invites and friend search.</p></div></li>
+            </ul>
           </article>
         </section>
 
         <section id="dashboard" class="stack-panel" hidden>
+          <article id="profile-panel" class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Profile</p>
+                <h2>Player nick</h2>
+              </div>
+            </div>
+            <p id="nick-help" class="meta">Choose a unique nick so other players can find and invite you.</p>
+            <form id="nick-form" class="stack-form top-gap">
+              <div class="inline-form">
+                <input id="nick-username" name="username" placeholder="player_nick" required />
+                <button class="primary-button" type="submit">Save nick</button>
+              </div>
+            </form>
+          </article>
+
           <article class="panel">
             <div class="panel-head">
               <div>
