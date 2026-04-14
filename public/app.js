@@ -4,6 +4,9 @@ const state = {
   session: null,
   incomingInvites: [],
   authMessage: null,
+  authConfig: {
+    facebookEnabled: false,
+  },
   roadmap: [],
   leaderboard: [],
   joiningDeepLink: false,
@@ -110,7 +113,11 @@ function toggleAuth() {
   elements.signedInView.hidden = !signedIn;
   elements.dashboard.hidden = !signedIn;
 
-  if (!signedIn) return;
+  if (!signedIn) {
+    elements.facebookLoginButton.disabled = !state.authConfig.facebookEnabled;
+    elements.facebookLoginButton.textContent = state.authConfig.facebookEnabled ? "Continue with Facebook" : "Facebook login not configured";
+    return;
+  }
 
   elements.meAvatar.src = state.me.avatarUrl;
   elements.meName.textContent = state.me.displayName;
@@ -421,6 +428,7 @@ function maybeShowAuthError() {
   if (!authError) return;
   const messages = {
     facebook_login_failed: "Facebook sign-in could not be completed. Please try again.",
+    facebook_not_configured: "Facebook login is not configured yet. Add FACEBOOK_APP_ID and FACEBOOK_APP_SECRET to .dev.vars and restart Wrangler.",
   };
   alert(messages[authError] || "Sign-in could not be completed.");
   replaceQuery((params) => params.delete("auth_error"));
@@ -446,6 +454,7 @@ async function refreshDashboard() {
   state.session = payload.activeSession;
   state.incomingInvites = payload.incomingInvites;
   state.authMessage = payload.authMessage;
+  state.authConfig = payload.authConfig || { facebookEnabled: false };
   state.roadmap = payload.roadmap?.nextUp || [];
   state.leaderboard = payload.leaderboard || [];
 

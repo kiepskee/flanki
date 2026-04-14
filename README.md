@@ -45,6 +45,29 @@ Players sign in with Facebook. The app takes:
 
 The Worker exchanges the Facebook OAuth code server-side and keeps players signed in with an HTTP-only session cookie.
 
+## Facebook app setup
+
+For local development with the current `.dev.vars`, configure your Meta app like this:
+
+1. Create or open a Meta app in the Meta for Developers dashboard.
+2. Add the `Facebook Login` product to the app.
+3. In Facebook Login settings, add this exact redirect URI:
+
+```text
+http://127.0.0.1:8787/api/auth/facebook/callback
+```
+
+4. Copy your `App ID` and `App Secret` into `.dev.vars`:
+
+```env
+FACEBOOK_APP_ID=your_real_app_id
+FACEBOOK_APP_SECRET=your_real_app_secret
+```
+
+5. Restart `wrangler dev`.
+
+This app requests `public_profile` and `email`. The Facebook name and profile photo are used for the account, and the player still sets an in-app Flanki nick after login.
+
 ## Local development
 
 ```bash

@@ -109,7 +109,10 @@ async function handleBootstrap(request, env, url) {
       friends: [],
       activeSession: null,
       incomingInvites: [],
-      authMessage: null,
+      authMessage: isFacebookConfigured(env) ? null : "Facebook login is not configured yet. Add FACEBOOK_APP_ID and FACEBOOK_APP_SECRET to continue.",
+      authConfig: {
+        facebookEnabled: isFacebookConfigured(env),
+      },
       roadmap: getRoadmap(),
     });
   }
@@ -120,6 +123,9 @@ async function handleBootstrap(request, env, url) {
     activeSession: await getLatestSessionForUser(env, user.id, url.origin),
     incomingInvites: await listIncomingInvites(env, user.id),
     authMessage: user.username ? null : "Add your player nick to unlock friend search, invites, and Flanki sessions.",
+    authConfig: {
+      facebookEnabled: isFacebookConfigured(env),
+    },
     roadmap: getRoadmap(),
     leaderboard: await getLeaderboard(env),
   });
@@ -132,7 +138,10 @@ function getRoadmap() {
 }
 
 async function handleFacebookStart(request, env, url) {
-  requireConfig(env, ["SESSION_SECRET", "FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET"]);
+  requireConfig(env, ["SESSION_SECRET"]);
+  if (!isFacebookConfigured(env)) {
+    return authRedirect(url, "/?auth_error=facebook_not_configured", "", 0);
+  }
   const next = sanitizeNextPath(url.searchParams.get("next") || "/");
   const stateToken = await signTemporaryToken(env.SESSION_SECRET, {
     next,
@@ -153,7 +162,10 @@ async function handleFacebookStart(request, env, url) {
 }
 
 async function handleFacebookCallback(request, env, url) {
-  requireConfig(env, ["SESSION_SECRET", "FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET"]);
+  requireConfig(env, ["SESSION_SECRET"]);
+  if (!isFacebookConfigured(env)) {
+    return authRedirect(url, "/?auth_error=facebook_not_configured", "", 0);
+  }
   const oauthStateCookie = parseCookies(request.headers.get("Cookie"))[FACEBOOK_OAUTH_COOKIE];
   const state = String(url.searchParams.get("state") || "");
   const code = String(url.searchParams.get("code") || "");
@@ -785,6 +797,10 @@ function draftSlotForPickIndex(pickIndex) {
 
 function ensureMatchNotLive(matchStatus, message) {
   if (matchStatus === "live") throw new HttpError(400, message);
+}
+
+function isFacebookConfigured(env) {
+  return Boolean(env.FACEBOOK_APP_ID && env.FACEBOOK_APP_SECRET);
 }
 
 async function listIncomingInvites(env, userId) {
