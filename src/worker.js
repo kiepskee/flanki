@@ -33,6 +33,7 @@ async function handleRequest(request, env) {
   if (url.pathname === "/api/bootstrap" && request.method === "GET") return handleBootstrap(request, env, url);
   if (url.pathname === "/api/auth/facebook/start" && request.method === "GET") return handleFacebookStart(request, env, url);
   if (url.pathname === "/api/auth/facebook/callback" && request.method === "GET") return handleFacebookCallback(request, env, url);
+  if (url.pathname === "/api/auth/dev-login" && request.method === "POST") return handleDevLogin(request, env, url);
   if (url.pathname === "/api/profile/nick" && request.method === "POST") return handleUpdateNick(request, env, await requireUser(request, env));
 
   if (url.pathname === "/api/logout" && request.method === "POST") {
@@ -109,9 +110,13 @@ async function handleBootstrap(request, env, url) {
       friends: [],
       activeSession: null,
       incomingInvites: [],
-      authMessage: isFacebookConfigured(env) ? null : "Facebook login is not configured yet. Add FACEBOOK_APP_ID and FACEBOOK_APP_SECRET to continue.",
+      authMessage:
+        isFacebookConfigured(env) || isDevLoginEnabled(env)
+          ? null
+          : "No sign-in method is configured yet. Add Facebook secrets or enable dev login to continue.",
       authConfig: {
         facebookEnabled: isFacebookConfigured(env),
+        devLoginEnabled: isDevLoginEnabled(env),
       },
       roadmap: getRoadmap(),
     });
@@ -125,6 +130,7 @@ async function handleBootstrap(request, env, url) {
     authMessage: user.username ? null : "Add your player nick to unlock friend search, invites, and Flanki sessions.",
     authConfig: {
       facebookEnabled: isFacebookConfigured(env),
+      devLoginEnabled: isDevLoginEnabled(env),
     },
     roadmap: getRoadmap(),
     leaderboard: await getLeaderboard(env),
@@ -182,6 +188,59 @@ async function handleFacebookCallback(request, env, url) {
   const user = await findOrCreateFacebookUser(env, facebookProfile);
   const sessionValue = await signSessionCookie(env.SESSION_SECRET, user);
   return authRedirect(url, next, sessionValue, 60 * 60 * 24 * 30);
+}
+
+async function handleDevLogin(request, env, url) {
+  requireConfig(env, ["SESSION_SECRET"]);
+  if (!isDevLoginEnabled(env)) throw new HttpError(403, "Dev login is disabled.");
+
+  const body = await request.json();
+  const displayName = normalizeDisplayName(body.displayName);
+  const username = normalizeUsername(body.username);
+  const next = sanitizeNextPath(body.next);
+
+  let user = await env.DB.prepare(
+    "SELECT id, facebook_id, email, username, display_name, email_verified, avatar_url, password_hash FROM users WHERE lower(username) = lower(?) LIMIT 1",
+  )
+    .bind(username)
+    .first();
+
+  if (user) {
+    const isReusableDevUser = !user.facebook_id && !user.email && !user.password_hash;
+    if (!isReusableDevUser) throw new HttpError(409, "That player nick is already taken.");
+
+    await env.DB.prepare("UPDATE users SET display_name = ?, avatar_url = ? WHERE id = ?")
+      .bind(displayName, avatarForDisplayName(displayName), user.id)
+      .run();
+  } else {
+    const id = `usr_${randomId()}`;
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO users (id, facebook_id, email, username, display_name, password_hash, email_verified, avatar_url) VALUES (?, NULL, NULL, ?, ?, NULL, 1, ?)",
+      ).bind(id, username, displayName, avatarForDisplayName(displayName)),
+      env.DB.prepare("INSERT OR IGNORE INTO player_records (user_id) VALUES (?)").bind(id),
+    ]);
+    user = { id };
+  }
+
+  const freshUser = await env.DB.prepare(
+    "SELECT id, facebook_id, email, username, display_name, email_verified, avatar_url FROM users WHERE lower(username) = lower(?) LIMIT 1",
+  )
+    .bind(username)
+    .first();
+
+  return createAuthResponse(
+    url,
+    env,
+    {
+      id: freshUser.id,
+      username: freshUser.username,
+      displayName: freshUser.display_name,
+      avatarUrl: freshUser.avatar_url,
+      emailVerified: freshUser.email_verified,
+    },
+    next,
+  );
 }
 
 async function handleUpdateNick(request, env, user) {
@@ -801,6 +860,14 @@ function ensureMatchNotLive(matchStatus, message) {
 
 function isFacebookConfigured(env) {
   return Boolean(env.FACEBOOK_APP_ID && env.FACEBOOK_APP_SECRET);
+}
+
+function isDevLoginEnabled(env) {
+  return String(env.ALLOW_DEV_LOGIN || "").toLowerCase() === "true" && getAppEnv(env) !== "production";
+}
+
+function getAppEnv(env) {
+  return String(env.APP_ENV || "development").toLowerCase();
 }
 
 async function listIncomingInvites(env, userId) {

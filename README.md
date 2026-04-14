@@ -9,24 +9,53 @@ A Cloudflare-native Flanki session manager for creating lobbies, inviting friend
 - Cloudflare D1 for persistence
 - Facebook Login plus HTTP-only cookie sessions
 
+## Environment split
+
+This repo is now split into three clearly separated versions:
+
+- `local development`
+  Uses `wrangler dev --local`, local D1, and `.dev.vars`.
+  This is where you can enable `ALLOW_DEV_LOGIN=true` and test without Facebook.
+- `preview`
+  A separate Cloudflare Worker intended for remote testing and demos.
+  It should use its own D1 database and may keep `ALLOW_DEV_LOGIN=true`.
+- `production`
+  The real public app with full login and safety features.
+  `ALLOW_DEV_LOGIN` is blocked in code when `APP_ENV=production`, even if someone accidentally sets it.
+
+The split is defined in [wrangler.toml](/abs/path/c:/Users/jakub/OneDrive/Dokumenty/GitHub/flanki/wrangler.toml:1).
+
 ## Required Cloudflare resources
 
-1. Create a D1 database.
-2. Replace `database_id` in `wrangler.toml`.
-3. Apply the schema:
+Create these D1 databases:
+
+1. `local`
+   Local-only via `--local`; no real remote setup needed.
+2. `preview`
+   Replace `replace-with-preview-d1-database-id` in `wrangler.toml`.
+3. `production`
+   Already points at the production database in `wrangler.toml`.
+
+Apply schema to a remote environment with the explicit environment command:
 
 ```bash
-wrangler d1 execute flanki-db --file=./schema.sql
+npm run db:apply:preview
+# or
+npm run db:apply:production
 ```
 
 ## Required secrets
 
-Set these Worker secrets:
+Set secrets per remote environment:
 
 ```bash
-wrangler secret put SESSION_SECRET
-wrangler secret put FACEBOOK_APP_ID
-wrangler secret put FACEBOOK_APP_SECRET
+wrangler secret put SESSION_SECRET --env preview
+wrangler secret put FACEBOOK_APP_ID --env preview
+wrangler secret put FACEBOOK_APP_SECRET --env preview
+
+wrangler secret put SESSION_SECRET --env production
+wrangler secret put FACEBOOK_APP_ID --env production
+wrangler secret put FACEBOOK_APP_SECRET --env production
 ```
 
 For local development, you can also create a `.dev.vars` file:
@@ -34,6 +63,14 @@ For local development, you can also create a `.dev.vars` file:
 ```bash
 cp .dev.vars.example .dev.vars
 ```
+
+For quick local testing without Facebook, keep this only in local `.dev.vars`:
+
+```env
+ALLOW_DEV_LOGIN=true
+```
+
+Do not set `ALLOW_DEV_LOGIN` in production secrets or vars.
 
 ## Accounts
 
@@ -47,26 +84,49 @@ The Worker exchanges the Facebook OAuth code server-side and keeps players signe
 
 ## Facebook app setup
 
-For local development with the current `.dev.vars`, configure your Meta app like this:
+Configure Meta with the callback that matches the version you are running:
 
-1. Create or open a Meta app in the Meta for Developers dashboard.
-2. Add the `Facebook Login` product to the app.
-3. In Facebook Login settings, add this exact redirect URI:
+Local:
 
 ```text
 http://127.0.0.1:8787/api/auth/facebook/callback
 ```
 
-4. Copy your `App ID` and `App Secret` into `.dev.vars`:
+Production:
+
+```text
+https://flanki.jakub-kieps.workers.dev/api/auth/facebook/callback
+```
+
+Preview:
+
+```text
+https://flanki-preview.<your-subdomain>.workers.dev/api/auth/facebook/callback
+```
+
+Then copy your `App ID` and `App Secret` into local `.dev.vars` or into the matching Cloudflare environment secrets.
+
+Local example:
 
 ```env
 FACEBOOK_APP_ID=your_real_app_id
 FACEBOOK_APP_SECRET=your_real_app_secret
 ```
 
-5. Restart `wrangler dev`.
+Restart `wrangler dev` after local changes.
 
 This app requests `public_profile` and `email`. The Facebook name and profile photo are used for the account, and the player still sets an in-app Flanki nick after login.
+
+## Dev test mode
+
+If `ALLOW_DEV_LOGIN=true`, the signed-out screen also shows a local test-player form. It lets you create or reuse temporary local players without Facebook so you can test sessions, invites, teams, stats, and ranking more quickly during development.
+
+This is intended for:
+
+- `local development`
+- optionally `preview`
+
+It is hard-blocked in `production` by environment logic in [src/worker.js](/abs/path/c:/Users/jakub/OneDrive/Dokumenty/GitHub/flanki/src/worker.js:807).
 
 ## Local development
 
@@ -77,17 +137,55 @@ npm run check
 npm run dev
 ```
 
-## Deploy
+Local preview-style run:
 
 ```bash
-npm run deploy
+npm run dev:preview
 ```
+
+Preview-style local run uses the `preview` Wrangler environment while still serving locally.
+
+## Deploy and preview commands
+
+Use explicit commands only:
+
+```bash
+npm run deploy:preview
+npm run deploy:production
+```
+
+The plain `npm run deploy` command is intentionally blocked so production cannot be deployed by accident.
+
+How to preview each version:
+
+- `local development`
+  Run `npm run dev`
+  Open `http://127.0.0.1:8787`
+- `local preview-style`
+  Run `npm run dev:preview`
+  Open `http://127.0.0.1:8787`
+- `remote preview`
+  Run `npm run deploy:preview`
+  Open the `workers.dev` URL Wrangler returns for `flanki-preview`
+- `production`
+  Run `npm run deploy:production`
+  Open `https://flanki.jakub-kieps.workers.dev`
+
+## Safe workflow
+
+Use this flow so test and production do not mix:
+
+1. Build and test features locally with `npm run dev`.
+2. If you want a remote demo/test build, deploy with `npm run deploy:preview`.
+3. Only publish real user changes with `npm run deploy:production`.
+4. Keep preview and production on separate D1 databases.
+5. Keep `ALLOW_DEV_LOGIN=true` out of production.
 
 ## Notes
 
 - If you installed `node`, `npm`, or `wrangler` while this terminal session was already open, restart the terminal so they are added to `PATH`.
 - The QR image is currently rendered through `api.qrserver.com` on the client.
-- Local D1 schema setup was validated with `wrangler d1 execute flanki-db --local --file=./schema.sql`.
+- Local D1 schema setup was validated with `wrangler d1 execute flanki-db-local --local --file=./schema.sql`.
 - If you previously used the older local-account schema locally, run `npm run db:reset:local` once to rebuild the local database for the Facebook-based account model.
 - Set `APP_ORIGIN` when your public Worker URL differs from the current request origin so Facebook OAuth redirects back to the right domain.
 - In the Facebook app settings, add `APP_ORIGIN/api/auth/facebook/callback` as a valid OAuth redirect URI.

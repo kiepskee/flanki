@@ -6,6 +6,7 @@ const state = {
   authMessage: null,
   authConfig: {
     facebookEnabled: false,
+    devLoginEnabled: false,
   },
   roadmap: [],
   leaderboard: [],
@@ -17,6 +18,8 @@ const elements = {
   signedInView: document.querySelector("#signed-in-view"),
   dashboard: document.querySelector("#dashboard"),
   facebookLoginButton: document.querySelector("#facebook-login-button"),
+  devLoginPanel: document.querySelector("#dev-login-panel"),
+  devLoginForm: document.querySelector("#dev-login-form"),
   meAvatar: document.querySelector("#me-avatar"),
   meName: document.querySelector("#me-name"),
   meHandle: document.querySelector("#me-handle"),
@@ -116,6 +119,7 @@ function toggleAuth() {
   if (!signedIn) {
     elements.facebookLoginButton.disabled = !state.authConfig.facebookEnabled;
     elements.facebookLoginButton.textContent = state.authConfig.facebookEnabled ? "Continue with Facebook" : "Facebook login not configured";
+    elements.devLoginPanel.hidden = !state.authConfig.devLoginEnabled;
     return;
   }
 
@@ -454,7 +458,7 @@ async function refreshDashboard() {
   state.session = payload.activeSession;
   state.incomingInvites = payload.incomingInvites;
   state.authMessage = payload.authMessage;
-  state.authConfig = payload.authConfig || { facebookEnabled: false };
+  state.authConfig = payload.authConfig || { facebookEnabled: false, devLoginEnabled: false };
   state.roadmap = payload.roadmap?.nextUp || [];
   state.leaderboard = payload.leaderboard || [];
 
@@ -478,6 +482,23 @@ async function logThrow(wasHit, finishedBeer) {
 
 elements.facebookLoginButton.addEventListener("click", () => {
   window.location.href = `/api/auth/facebook/start?next=${encodeURIComponent(getJoinTarget())}`;
+});
+
+elements.devLoginForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const payload = await request("/api/auth/dev-login", {
+    method: "POST",
+    body: JSON.stringify({
+      displayName: new FormData(elements.devLoginForm).get("displayName"),
+      username: new FormData(elements.devLoginForm).get("username"),
+      next: getJoinTarget(),
+    }),
+  });
+  if (payload?.next && payload.next !== "/" && payload.next.startsWith("/join/")) {
+    history.replaceState({}, "", payload.next);
+  }
+  elements.devLoginForm.reset();
+  await refreshDashboard();
 });
 
 elements.nickForm.addEventListener("submit", async (event) => {

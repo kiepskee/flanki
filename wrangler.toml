@@ -1,13 +1,41 @@
-name = "flanki"
+name = "flanki-local"
 main = "src/worker.js"
 compatibility_date = "2026-04-12"
-workers_dev = true
+workers_dev = false
+
+[vars]
+APP_ENV = "development"
 
 [assets]
 directory = "./public"
 binding = "ASSETS"
 
 [[d1_databases]]
+binding = "DB"
+database_name = "flanki-db-local"
+database_id = "replace-with-local-placeholder-id"
+
+[env.preview]
+name = "flanki-preview"
+workers_dev = true
+
+[env.preview.vars]
+APP_ENV = "preview"
+ALLOW_DEV_LOGIN = "true"
+
+[[env.preview.d1_databases]]
+binding = "DB"
+database_name = "flanki-db-preview"
+database_id = "e2001627-df6a-4cb1-916e-b76efc54ede3"
+
+[env.production]
+name = "flanki"
+workers_dev = true
+
+[env.production.vars]
+APP_ENV = "production"
+
+[[env.production.d1_databases]]
 binding = "DB"
 database_name = "flanki-db"
 database_id = "c751d178-ce61-432d-b4b2-ef442482ca6d"
