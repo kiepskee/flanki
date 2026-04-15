@@ -2,6 +2,8 @@
 
 A Cloudflare-native Flanki session manager for creating lobbies, inviting friends, splitting teams, and tracking live match stats plus ranking.
 
+The frontend uses static assets plus Tailwind CSS, and the backend runs on Cloudflare Workers with D1.
+
 ## Stack
 
 - Cloudflare Workers for APIs
@@ -9,22 +11,18 @@ A Cloudflare-native Flanki session manager for creating lobbies, inviting friend
 - Cloudflare D1 for persistence
 - Facebook Login plus HTTP-only cookie sessions
 
-## Environment split
+## Environments
 
-This repo is now split into two clearly separated versions:
+Flanki has:
 
-- `local development`
-  Uses `wrangler dev --local`, local D1, and `.dev.vars`.
-  This is where you can enable `ALLOW_DEV_LOGIN=true` and test without Facebook.
-- `production`
-  The real public app with full login and safety features.
-  `ALLOW_DEV_LOGIN` is hard-blocked in code outside local development.
+- a local development setup powered by `wrangler dev --local`, local D1, and `.dev.vars`
+- a production deployment published with the `production` Wrangler environment
 
-The split is defined in [wrangler.toml](/abs/path/c:/Users/jakub/OneDrive/Dokumenty/GitHub/flanki/wrangler.toml:1).
+`ALLOW_DEV_LOGIN` is only honored when `APP_ENV=development`.
 
 ## Required Cloudflare resources
 
-Create these D1 databases:
+You need:
 
 1. `local`
    Local-only via `--local`; no real remote setup needed.
@@ -39,7 +37,7 @@ npm run db:apply:production
 
 ## Required secrets
 
-Set production secrets:
+Set the production secrets:
 
 ```bash
 wrangler secret put SESSION_SECRET --env production
@@ -47,7 +45,7 @@ wrangler secret put FACEBOOK_APP_ID --env production
 wrangler secret put FACEBOOK_APP_SECRET --env production
 ```
 
-For local development, you can also create a `.dev.vars` file:
+For local development, create a `.dev.vars` file:
 
 ```bash
 cp .dev.vars.example .dev.vars
@@ -59,7 +57,7 @@ For quick local testing without Facebook, keep this only in local `.dev.vars`:
 ALLOW_DEV_LOGIN=true
 ```
 
-Do not set `ALLOW_DEV_LOGIN` in production secrets or vars. The code only allows dev login when `APP_ENV=development`.
+Do not set `ALLOW_DEV_LOGIN` in production secrets or vars.
 
 ## Accounts
 
@@ -73,7 +71,7 @@ The Worker exchanges the Facebook OAuth code server-side and keeps players signe
 
 ## Facebook app setup
 
-Configure Meta with the callback that matches the version you are running:
+Configure Meta with these callback URLs:
 
 Local:
 
@@ -87,7 +85,7 @@ Production:
 https://flanki.jakub-kieps.workers.dev/api/auth/facebook/callback
 ```
 
-Then copy your `App ID` and `App Secret` into local `.dev.vars` or into the production Cloudflare environment secrets.
+Then copy your `App ID` and `App Secret` into local `.dev.vars` or the production Cloudflare environment secrets.
 
 Local example:
 
@@ -100,26 +98,24 @@ Restart `wrangler dev` after local changes.
 
 This app requests `public_profile` and `email`. The Facebook name and profile photo are used for the account, and the player still sets an in-app Flanki nick after login.
 
-## Dev test mode
+## Local dev login
 
 If `ALLOW_DEV_LOGIN=true`, the signed-out screen also shows a local test-player form. It lets you create or reuse temporary local players without Facebook so you can test sessions, invites, teams, stats, and ranking more quickly during development.
-
-This is intended for:
-
-- `local development`
-
-It is hard-blocked outside local development by environment logic in [src/worker.js](/abs/path/c:/Users/jakub/OneDrive/Dokumenty/GitHub/flanki/src/worker.js:807).
+It is hard-blocked outside local development by environment logic in [src/worker.js](C:/Users/jakub/OneDrive/Dokumenty/GitHub/flanki/src/worker.js:968).
 
 ## Local development
 
 ```bash
 npm install
 npm run db:reset:local
+npm run styles:build
 npm run check
 npm run dev
 ```
 
-## Deploy commands
+Open `http://127.0.0.1:8787` after `npm run dev` starts.
+
+## Deploy
 
 Use explicit commands only:
 
@@ -127,25 +123,7 @@ Use explicit commands only:
 npm run deploy:production
 ```
 
-The plain `npm run deploy` command is intentionally blocked so production cannot be deployed by accident.
-
-How to preview each version:
-
-- `local development`
-  Run `npm run dev`
-  Open `http://127.0.0.1:8787`
-- `production`
-  Run `npm run deploy:production`
-  Open `https://flanki.jakub-kieps.workers.dev`
-
-## Safe workflow
-
-Use this flow so test and production do not mix:
-
-1. Build and test features locally with `npm run dev`.
-2. Use `ALLOW_DEV_LOGIN=true` locally if you want to test the full app without Facebook.
-3. Only publish real user changes with `npm run deploy:production`.
-4. Keep `ALLOW_DEV_LOGIN=true` out of production.
+The plain `npm run deploy` command is intentionally blocked so production cannot be deployed by accident. The production app is published at `https://flanki.jakub-kieps.workers.dev`.
 
 ## Notes
 
@@ -170,5 +148,5 @@ Use this flow so test and production do not mix:
 - Start a live match and log each throw as miss, hit, beer finished, or hit plus beer finished
 - Remove players from the active rotation once they finish their beer and leave the field
 - Track per-match player and team accuracy
-- Record how many hits a player had when they finished their beer
+- Record how many team hits had happened when a player finished their beer
 - Build a running leaderboard from cumulative player performance
