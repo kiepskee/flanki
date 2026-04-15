@@ -15,19 +15,6 @@ binding = "DB"
 database_name = "flanki-db-local"
 database_id = "replace-with-local-placeholder-id"
 
-[env.preview]
-name = "flanki-preview"
-workers_dev = true
-
-[env.preview.vars]
-APP_ENV = "preview"
-ALLOW_DEV_LOGIN = "true"
-
-[[env.preview.d1_databases]]
-binding = "DB"
-database_name = "flanki-db-preview"
-database_id = "e2001627-df6a-4cb1-916e-b76efc54ede3"
-
 [env.production]
 name = "flanki"
 workers_dev = true

@@ -53,9 +53,24 @@ async function handleRequest(request, env) {
     return handleInviteFriend(request, env, await requireUser(request, env), inviteMatch[1]);
   }
 
+  const addInvitedPlayerMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/invites\/([^/]+)\/add$/);
+  if (addInvitedPlayerMatch && request.method === "POST") {
+    return handleAddInvitedPlayer(env, await requireUser(request, env), addInvitedPlayerMatch[1], addInvitedPlayerMatch[2], url.origin);
+  }
+
   const autoTeamsMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/teams\/auto$/);
   if (autoTeamsMatch && request.method === "POST") {
     return handleAutoTeams(env, await requireUser(request, env), autoTeamsMatch[1], url.origin);
+  }
+
+  const manualTeamsStartMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/teams\/manual$/);
+  if (manualTeamsStartMatch && request.method === "POST") {
+    return handleStartManualTeams(env, await requireUser(request, env), manualTeamsStartMatch[1], url.origin);
+  }
+
+  const manualAssignMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/teams\/assign$/);
+  if (manualAssignMatch && request.method === "POST") {
+    return handleManualAssign(request, env, await requireUser(request, env), manualAssignMatch[1], url.origin);
   }
 
   const captainsStartMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/teams\/captains$/);
@@ -317,6 +332,36 @@ async function handleInviteFriend(request, env, user, sessionId) {
   return json({ ok: true });
 }
 
+async function handleAddInvitedPlayer(env, user, sessionId, inviteId, origin) {
+  assertHasPlayerNick(user);
+  if (!isDevLoginEnabled(env)) throw new HttpError(403, "This shortcut is only available in local development.");
+
+  const session = await requireOwnedSession(env, sessionId, user.id);
+  ensureMatchNotLive(session.match_status, "You cannot add invited players once the match is live.");
+
+  const invite = await env.DB.prepare(
+    "SELECT id, session_id, invitee_user_id, status FROM session_invites WHERE id = ? AND session_id = ? LIMIT 1",
+  )
+    .bind(inviteId, session.id)
+    .first();
+
+  if (!invite) throw new HttpError(404, "Invite not found.");
+  if (invite.status !== "pending") throw new HttpError(400, "That invite has already been handled.");
+
+  const invitee = await env.DB.prepare("SELECT id, username FROM users WHERE id = ? LIMIT 1").bind(invite.invitee_user_id).first();
+  if (!invitee) throw new HttpError(404, "Invited player not found.");
+  if (!invitee.username) throw new HttpError(400, "Invited player still needs a nick before joining.");
+
+  await env.DB.batch([
+    env.DB.prepare("UPDATE session_invites SET status = 'accepted', responded_at = CURRENT_TIMESTAMP WHERE id = ?").bind(invite.id),
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO session_members (session_id, user_id, role, team_slot, team_order, is_captain, is_out) VALUES (?, ?, 'player', NULL, NULL, 0, 0)",
+    ).bind(session.id, invite.invitee_user_id),
+  ]);
+
+  return json({ session: await getSessionById(env, session.id, origin) });
+}
+
 async function handleAutoTeams(env, user, sessionId, origin) {
   assertHasPlayerNick(user);
   const session = await requireOwnedSession(env, sessionId, user.id);
@@ -348,6 +393,23 @@ async function handleAutoTeams(env, user, sessionId, origin) {
   return json({ session: await getSessionById(env, session.id, origin) });
 }
 
+async function handleStartManualTeams(env, user, sessionId, origin) {
+  assertHasPlayerNick(user);
+  const session = await requireOwnedSession(env, sessionId, user.id);
+  ensureMatchNotLive(session.match_status, "You cannot rebuild teams during a live match.");
+
+  await env.DB.batch([
+    env.DB.prepare(
+      "UPDATE game_sessions SET team_mode = 'manual', draft_turn_slot = NULL, match_status = 'setup', current_turn_team = NULL, current_turn_user_id = NULL, throw_number = 0, winner_team = NULL, completed_at = NULL WHERE id = ?",
+    ).bind(session.id),
+    env.DB.prepare(
+      "UPDATE session_members SET team_slot = NULL, team_order = NULL, is_captain = 0, is_out = 0, out_throw_number = NULL WHERE session_id = ?",
+    ).bind(session.id),
+  ]);
+
+  return json({ session: await getSessionById(env, session.id, origin) });
+}
+
 async function handleStartCaptainDraft(request, env, user, sessionId, origin) {
   assertHasPlayerNick(user);
   const session = await requireOwnedSession(env, sessionId, user.id);
@@ -371,6 +433,41 @@ async function handleStartCaptainDraft(request, env, user, sessionId, origin) {
     env.DB.prepare("UPDATE session_members SET team_slot = ?, team_order = 1, is_captain = 1 WHERE session_id = ? AND user_id = ?").bind(TEAM_A, session.id, captainAUserId),
     env.DB.prepare("UPDATE session_members SET team_slot = ?, team_order = 1, is_captain = 1 WHERE session_id = ? AND user_id = ?").bind(TEAM_B, session.id, captainBUserId),
   ]);
+
+  return json({ session: await getSessionById(env, session.id, origin) });
+}
+
+async function handleManualAssign(request, env, user, sessionId, origin) {
+  assertHasPlayerNick(user);
+  const session = await requireOwnedSession(env, sessionId, user.id);
+  ensureMatchNotLive(session.match_status, "You cannot change teams during a live match.");
+
+  const body = await request.json();
+  const userId = String(body.userId || "");
+  const requestedTeamSlot = body.teamSlot == null ? null : String(body.teamSlot || "");
+  if (!userId) throw new HttpError(400, "Choose a player to assign.");
+  if (requestedTeamSlot !== null && ![TEAM_A, TEAM_B].includes(requestedTeamSlot)) {
+    throw new HttpError(400, "Invalid team.");
+  }
+
+  const members = await listSessionMembers(env, session.id);
+  const targetMember = members.find((member) => member.id === userId);
+  if (!targetMember) throw new HttpError(404, "Player not found in this session.");
+
+  const nextOrder =
+    requestedTeamSlot === null
+      ? null
+      : Math.max(0, ...members.filter((member) => member.teamSlot === requestedTeamSlot && member.id !== userId).map((member) => member.teamOrder || 0)) + 1;
+
+  await env.DB.prepare(
+    "UPDATE session_members SET team_slot = ?, team_order = ?, is_captain = 0, is_out = 0, out_throw_number = NULL WHERE session_id = ? AND user_id = ?",
+  )
+    .bind(requestedTeamSlot, nextOrder, session.id, userId)
+    .run();
+
+  await normalizeTeamOrder(env, session.id, TEAM_A);
+  await normalizeTeamOrder(env, session.id, TEAM_B);
+  await env.DB.prepare("UPDATE game_sessions SET team_mode = 'manual', draft_turn_slot = NULL WHERE id = ?").bind(session.id).run();
 
   return json({ session: await getSessionById(env, session.id, origin) });
 }
@@ -505,15 +602,17 @@ async function handleMatchThrow(request, env, user, sessionId, origin) {
   if (currentPlayer.isOut) throw new HttpError(400, "Current player is already off the field.");
 
   const throwNumber = Number(session.throw_number) + 1;
-  const statRow = await env.DB.prepare("SELECT throws, hits FROM session_stats WHERE session_id = ? AND user_id = ?")
-    .bind(session.id, currentPlayer.id)
+  const teamHitsRow = await env.DB.prepare(
+    "SELECT COALESCE(SUM(hits), 0) AS hits FROM session_stats WHERE session_id = ? AND team_slot = ?",
+  )
+    .bind(session.id, currentPlayer.teamSlot)
     .first();
-  const nextHits = Number(statRow?.hits || 0) + (wasHit ? 1 : 0);
+  const nextTeamHits = Number(teamHitsRow?.hits || 0) + (wasHit ? 1 : 0);
 
   const statements = [
     env.DB.prepare(
       "UPDATE session_stats SET throws = throws + 1, hits = hits + ?, misses = misses + ?, turns_taken = turns_taken + 1, finished_beer = finished_beer + ?, hits_when_finished = CASE WHEN ? = 1 AND hits_when_finished IS NULL THEN ? ELSE hits_when_finished END WHERE session_id = ? AND user_id = ?",
-    ).bind(wasHit ? 1 : 0, wasHit ? 0 : 1, finishedBeer ? 1 : 0, finishedBeer ? 1 : 0, nextHits, session.id, currentPlayer.id),
+    ).bind(wasHit ? 1 : 0, wasHit ? 0 : 1, finishedBeer ? 1 : 0, finishedBeer ? 1 : 0, nextTeamHits, session.id, currentPlayer.id),
     env.DB.prepare(
       "INSERT INTO throw_events (id, session_id, throw_number, user_id, team_slot, was_hit, finished_beer) VALUES (?, ?, ?, ?, ?, ?, ?)",
     ).bind(`thr_${randomId()}`, session.id, throwNumber, currentPlayer.id, currentPlayer.teamSlot, wasHit ? 1 : 0, finishedBeer ? 1 : 0),
@@ -797,7 +896,7 @@ async function getSessionById(env, sessionId, origin) {
 
   const members = await listSessionMembers(env, sessionId);
   const pendingInvitesResult = await env.DB.prepare(
-    "SELECT u.id, u.username, u.display_name, u.avatar_url, u.email_verified FROM session_invites si JOIN users u ON u.id = si.invitee_user_id WHERE si.session_id = ? AND si.status = 'pending' ORDER BY lower(u.display_name), lower(u.username)",
+    "SELECT si.id AS invite_id, u.id, u.username, u.display_name, u.avatar_url, u.email_verified FROM session_invites si JOIN users u ON u.id = si.invitee_user_id WHERE si.session_id = ? AND si.status = 'pending' ORDER BY lower(u.display_name), lower(u.username)",
   )
     .bind(sessionId)
     .all();
@@ -818,7 +917,10 @@ async function getSessionById(env, sessionId, origin) {
       email_verified: session.host_email_verified,
     }),
     members,
-    pendingInvites: (pendingInvitesResult.results || []).map(publicUser),
+    pendingInvites: (pendingInvitesResult.results || []).map((invite) => ({
+      inviteId: invite.invite_id,
+      ...publicUser(invite),
+    })),
     teams: teamState,
     playerCount: members.length,
     match,
@@ -863,7 +965,7 @@ function isFacebookConfigured(env) {
 }
 
 function isDevLoginEnabled(env) {
-  return String(env.ALLOW_DEV_LOGIN || "").toLowerCase() === "true" && getAppEnv(env) !== "production";
+  return String(env.ALLOW_DEV_LOGIN || "").toLowerCase() === "true" && getAppEnv(env) === "development";
 }
 
 function getAppEnv(env) {
@@ -1013,6 +1115,23 @@ async function getLastThrowerForTeam(env, sessionId, teamSlot) {
     .bind(sessionId, teamSlot)
     .first();
   return row?.user_id || null;
+}
+
+async function normalizeTeamOrder(env, sessionId, teamSlot) {
+  const result = await env.DB.prepare(
+    "SELECT user_id FROM session_members WHERE session_id = ? AND team_slot = ? ORDER BY COALESCE(team_order, 999), joined_at, user_id",
+  )
+    .bind(sessionId, teamSlot)
+    .all();
+
+  const rows = result.results || [];
+  if (!rows.length) return;
+
+  await env.DB.batch(
+    rows.map((row, index) =>
+      env.DB.prepare("UPDATE session_members SET team_order = ? WHERE session_id = ? AND user_id = ?").bind(index + 1, sessionId, row.user_id),
+    ),
+  );
 }
 
 function getNextActivePlayer(members, teamSlot, lastThrowerId) {

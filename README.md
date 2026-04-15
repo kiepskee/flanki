@@ -11,17 +11,14 @@ A Cloudflare-native Flanki session manager for creating lobbies, inviting friend
 
 ## Environment split
 
-This repo is now split into three clearly separated versions:
+This repo is now split into two clearly separated versions:
 
 - `local development`
   Uses `wrangler dev --local`, local D1, and `.dev.vars`.
   This is where you can enable `ALLOW_DEV_LOGIN=true` and test without Facebook.
-- `preview`
-  A separate Cloudflare Worker intended for remote testing and demos.
-  It should use its own D1 database and may keep `ALLOW_DEV_LOGIN=true`.
 - `production`
   The real public app with full login and safety features.
-  `ALLOW_DEV_LOGIN` is blocked in code when `APP_ENV=production`, even if someone accidentally sets it.
+  `ALLOW_DEV_LOGIN` is hard-blocked in code outside local development.
 
 The split is defined in [wrangler.toml](/abs/path/c:/Users/jakub/OneDrive/Dokumenty/GitHub/flanki/wrangler.toml:1).
 
@@ -31,28 +28,20 @@ Create these D1 databases:
 
 1. `local`
    Local-only via `--local`; no real remote setup needed.
-2. `preview`
-   Replace `replace-with-preview-d1-database-id` in `wrangler.toml`.
-3. `production`
+2. `production`
    Already points at the production database in `wrangler.toml`.
 
-Apply schema to a remote environment with the explicit environment command:
+Apply schema to production with:
 
 ```bash
-npm run db:apply:preview
-# or
 npm run db:apply:production
 ```
 
 ## Required secrets
 
-Set secrets per remote environment:
+Set production secrets:
 
 ```bash
-wrangler secret put SESSION_SECRET --env preview
-wrangler secret put FACEBOOK_APP_ID --env preview
-wrangler secret put FACEBOOK_APP_SECRET --env preview
-
 wrangler secret put SESSION_SECRET --env production
 wrangler secret put FACEBOOK_APP_ID --env production
 wrangler secret put FACEBOOK_APP_SECRET --env production
@@ -70,7 +59,7 @@ For quick local testing without Facebook, keep this only in local `.dev.vars`:
 ALLOW_DEV_LOGIN=true
 ```
 
-Do not set `ALLOW_DEV_LOGIN` in production secrets or vars.
+Do not set `ALLOW_DEV_LOGIN` in production secrets or vars. The code only allows dev login when `APP_ENV=development`.
 
 ## Accounts
 
@@ -98,13 +87,7 @@ Production:
 https://flanki.jakub-kieps.workers.dev/api/auth/facebook/callback
 ```
 
-Preview:
-
-```text
-https://flanki-preview.<your-subdomain>.workers.dev/api/auth/facebook/callback
-```
-
-Then copy your `App ID` and `App Secret` into local `.dev.vars` or into the matching Cloudflare environment secrets.
+Then copy your `App ID` and `App Secret` into local `.dev.vars` or into the production Cloudflare environment secrets.
 
 Local example:
 
@@ -124,9 +107,8 @@ If `ALLOW_DEV_LOGIN=true`, the signed-out screen also shows a local test-player 
 This is intended for:
 
 - `local development`
-- optionally `preview`
 
-It is hard-blocked in `production` by environment logic in [src/worker.js](/abs/path/c:/Users/jakub/OneDrive/Dokumenty/GitHub/flanki/src/worker.js:807).
+It is hard-blocked outside local development by environment logic in [src/worker.js](/abs/path/c:/Users/jakub/OneDrive/Dokumenty/GitHub/flanki/src/worker.js:807).
 
 ## Local development
 
@@ -137,20 +119,11 @@ npm run check
 npm run dev
 ```
 
-Local preview-style run:
-
-```bash
-npm run dev:preview
-```
-
-Preview-style local run uses the `preview` Wrangler environment while still serving locally.
-
-## Deploy and preview commands
+## Deploy commands
 
 Use explicit commands only:
 
 ```bash
-npm run deploy:preview
 npm run deploy:production
 ```
 
@@ -161,12 +134,6 @@ How to preview each version:
 - `local development`
   Run `npm run dev`
   Open `http://127.0.0.1:8787`
-- `local preview-style`
-  Run `npm run dev:preview`
-  Open `http://127.0.0.1:8787`
-- `remote preview`
-  Run `npm run deploy:preview`
-  Open the `workers.dev` URL Wrangler returns for `flanki-preview`
 - `production`
   Run `npm run deploy:production`
   Open `https://flanki.jakub-kieps.workers.dev`
@@ -176,10 +143,9 @@ How to preview each version:
 Use this flow so test and production do not mix:
 
 1. Build and test features locally with `npm run dev`.
-2. If you want a remote demo/test build, deploy with `npm run deploy:preview`.
+2. Use `ALLOW_DEV_LOGIN=true` locally if you want to test the full app without Facebook.
 3. Only publish real user changes with `npm run deploy:production`.
-4. Keep preview and production on separate D1 databases.
-5. Keep `ALLOW_DEV_LOGIN=true` out of production.
+4. Keep `ALLOW_DEV_LOGIN=true` out of production.
 
 ## Notes
 

@@ -9,34 +9,64 @@
   <body>
     <div class="app-shell">
       <header class="topbar">
-        <div>
-          <p class="eyebrow">Flanki</p>
-          <h1>Session Manager</h1>
-          <p class="subcopy">Create a lobby, build teams, run the throw order, and track live Flanki stats and ranking.</p>
-        </div>
-        <div id="signed-in-view" class="topbar-card" hidden>
-          <div class="profile-row">
-            <img id="me-avatar" alt="" />
-            <div>
-              <strong id="me-name"></strong>
-              <p id="me-handle"></p>
+        <div class="hero-copy">
+          <div class="hero-badge-row">
+            <p class="eyebrow">Flanki Night</p>
+            <span class="hero-badge">Beer league flow</span>
+          </div>
+          <h1>Build the lobby. Pour the teams. Run the match.</h1>
+          <p class="subcopy">A mobile-first Flanki match desk for organizing the crew, tracking throws, and finishing beers with a proper pub-night atmosphere.</p>
+          <div class="hero-stats">
+            <div class="hero-stat">
+              <span class="hero-stat-label">Lobby</span>
+              <strong>Invite friends fast</strong>
+            </div>
+            <div class="hero-stat">
+              <span class="hero-stat-label">Match</span>
+              <strong>Track every throw</strong>
+            </div>
+            <div class="hero-stat">
+              <span class="hero-stat-label">Ranking</span>
+              <strong>Keep season form</strong>
             </div>
           </div>
-          <button class="secondary-button" id="logout-button" type="button">Log out</button>
+        </div>
+        <div id="signed-in-view" class="topbar-card" hidden>
+          <div class="topbar-card-inner">
+            <div class="topbar-card-copy">
+              <p class="eyebrow">At the table</p>
+              <h2>Your player seat</h2>
+            </div>
+            <div class="profile-row">
+              <img id="me-avatar" alt="" />
+              <div>
+                <strong id="me-name"></strong>
+                <p id="me-handle"></p>
+              </div>
+            </div>
+            <button class="secondary-button" id="logout-button" type="button">Log out</button>
+          </div>
         </div>
       </header>
 
       <main>
         <section id="signed-out-view" class="stack-panel">
-          <article class="panel">
-            <h2>Continue with Facebook</h2>
+          <article class="panel feature-panel feature-panel-primary">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Sign in</p>
+                <h2>Continue with Facebook</h2>
+              </div>
+            </div>
             <p class="meta">Use your Facebook name and profile photo to sign in. Right after login you can add your Flanki player nick.</p>
             <button class="primary-button top-gap" id="facebook-login-button" type="button">Continue with Facebook</button>
           </article>
 
-          <article id="dev-login-panel" class="panel" hidden>
+          <article id="dev-login-panel" class="panel feature-panel" hidden>
+            <p class="eyebrow">Local mode</p>
             <h2>Test without login</h2>
             <p class="meta">Create a temporary local test player for trying sessions, teams, stats, and ranking without Facebook.</p>
+            <p class="meta top-gap">Seeded local demo users: <code>demo_alex</code>, <code>demo_blair</code>, <code>demo_casey</code>, <code>demo_drew</code>, <code>demo_emery</code>, <code>demo_finley</code></p>
             <form id="dev-login-form" class="stack-form top-gap">
               <input id="dev-display-name" name="displayName" placeholder="Test display name" required />
               <input id="dev-username" name="username" placeholder="test_player" required />
@@ -44,8 +74,9 @@
             </form>
           </article>
 
-          <article class="panel">
-            <h2>How identity works</h2>
+          <article class="panel feature-panel">
+            <p class="eyebrow">Identity</p>
+            <h2>How player identity works</h2>
             <ul class="card-list compact">
               <li class="list-card"><div><strong>Facebook login</strong><p class="meta">Your display name and profile photo come from Facebook.</p></div></li>
               <li class="list-card"><div><strong>Player nick</strong><p class="meta">You still choose your own unique Flanki nick for invites and friend search.</p></div></li>
@@ -54,7 +85,7 @@
         </section>
 
         <section id="dashboard" class="stack-panel" hidden>
-          <article id="profile-panel" class="panel">
+          <article id="profile-panel" class="panel feature-panel">
             <div class="panel-head">
               <div>
                 <p class="eyebrow">Profile</p>
@@ -70,13 +101,14 @@
             </form>
           </article>
 
-          <article class="panel">
+          <article class="panel session-panel">
             <div class="panel-head">
               <div>
                 <p class="eyebrow">Lobby</p>
                 <h2>Flanki session</h2>
               </div>
             </div>
+            <p class="section-lead">Set the table, split the teams, and move into live match control from one place.</p>
             <form id="session-form" class="stack-form">
               <div class="inline-form">
                 <input id="session-name" name="name" placeholder="Tonight's Flanki session" required />
@@ -85,26 +117,33 @@
             </form>
             <div id="session-empty" class="empty-state">Create a session to invite players and build teams.</div>
             <div id="session-card" hidden>
-              <div class="session-card-head">
-                <div>
-                  <h3 id="session-name-output"></h3>
-                  <p id="session-host-output"></p>
-                  <p id="session-size-output" class="meta"></p>
+              <div class="session-stage">
+                <div class="session-stage-main">
+                  <div class="session-card-head">
+                    <div>
+                      <h3 id="session-name-output"></h3>
+                      <p id="session-host-output"></p>
+                      <p id="session-size-output" class="meta"></p>
+                    </div>
+                    <span class="pill" id="session-status-output"></span>
+                  </div>
+                  <div class="inline-form top-gap">
+                    <input id="session-link" readonly />
+                    <button class="secondary-button" id="copy-link-button" type="button">Copy</button>
+                  </div>
+                  <div class="team-actions">
+                    <button class="primary-button" id="auto-teams-button" type="button">Auto sort teams</button>
+                    <button class="secondary-button" id="manual-teams-button" type="button">Manual assign</button>
+                    <button class="secondary-button" id="captain-draft-button" type="button">Captain draft</button>
+                    <button class="primary-button" id="start-match-button" type="button">Start match</button>
+                  </div>
                 </div>
-                <span class="pill" id="session-status-output"></span>
-              </div>
-              <div class="inline-form top-gap">
-                <input id="session-link" readonly />
-                <button class="secondary-button" id="copy-link-button" type="button">Copy</button>
-              </div>
-              <div class="qr-wrap">
-                <img id="qr-image" alt="Session QR code" />
-              </div>
-
-              <div class="team-actions">
-                <button class="primary-button" id="auto-teams-button" type="button">Auto sort teams</button>
-                <button class="secondary-button" id="captain-draft-button" type="button">Captain draft</button>
-                <button class="primary-button" id="start-match-button" type="button">Start match</button>
+                <aside class="session-stage-side">
+                  <div class="qr-wrap">
+                    <img id="qr-image" alt="Session QR code" />
+                  </div>
+                  <p class="qr-caption">Scan to join the table without passing the phone around.</p>
+                </aside>
               </div>
 
               <div id="captain-setup" class="stack-form top-gap" hidden>
@@ -133,7 +172,7 @@
                 </section>
               </div>
 
-              <section id="match-panel" class="panel top-gap" hidden>
+              <section id="match-panel" class="panel match-stage top-gap" hidden>
                 <p class="eyebrow">Live match</p>
                 <h3 id="match-status-title"></h3>
                 <p id="current-player-text" class="meta"></p>
@@ -158,7 +197,7 @@
             </div>
           </article>
 
-          <article class="panel">
+          <article class="panel feature-panel">
             <div class="panel-head">
               <div>
                 <p class="eyebrow">Players</p>
@@ -175,7 +214,7 @@
             <ul id="friend-list" class="card-list"></ul>
           </article>
 
-          <article class="panel">
+          <article class="panel feature-panel">
             <div class="panel-head">
               <div>
                 <p class="eyebrow">Invites</p>
@@ -186,17 +225,18 @@
             <ul id="incoming-list" class="card-list"></ul>
           </article>
 
-          <article class="panel">
+          <article class="panel feature-panel">
             <div class="panel-head">
               <div>
                 <p class="eyebrow">Ranking</p>
                 <h2>Leaderboard</h2>
               </div>
             </div>
+            <p class="section-lead">See who is landing throws, finishing cleanly, and carrying form across sessions.</p>
             <ul id="leaderboard-list" class="card-list compact"></ul>
           </article>
 
-          <article class="panel">
+          <article class="panel feature-panel">
             <div class="panel-head">
               <div>
                 <p class="eyebrow">Roadmap</p>

@@ -45,6 +45,7 @@ const elements = {
   copyLinkButton: document.querySelector("#copy-link-button"),
   qrImage: document.querySelector("#qr-image"),
   autoTeamsButton: document.querySelector("#auto-teams-button"),
+  manualTeamsButton: document.querySelector("#manual-teams-button"),
   captainDraftButton: document.querySelector("#captain-draft-button"),
   startMatchButton: document.querySelector("#start-match-button"),
   captainSetup: document.querySelector("#captain-setup"),
@@ -157,7 +158,7 @@ function renderLeaderboard() {
   for (const player of state.leaderboard) {
     const li = document.createElement("li");
     li.className = "list-card";
-    li.innerHTML = `<div><strong>${player.displayName}</strong><p class="meta">${player.username ? `@${player.username}` : "nick pending"} | rating ${player.rating} | wins ${player.wins}/${player.matchesPlayed} | accuracy ${player.accuracy}% | avg hits to finish ${player.avgHitsToFinish ?? "-"}</p></div>`;
+    li.innerHTML = `<div><strong>${player.displayName}</strong><p class="meta">${player.username ? `@${player.username}` : "nick pending"} | rating ${player.rating} | wins ${player.wins}/${player.matchesPlayed} | accuracy ${player.accuracy}% | avg team hits to finish ${player.avgHitsToFinish ?? "-"}</p></div>`;
     elements.leaderboardList.appendChild(li);
   }
 }
@@ -218,6 +219,10 @@ function canManageSession(session) {
   return state.me && session.host.id === state.me.id;
 }
 
+function canUseDevInviteShortcut(session) {
+  return Boolean(state.authConfig.devLoginEnabled && canManageSession(session) && session.match.status !== "live");
+}
+
 function canRecordThrow(session) {
   if (!state.me || session.match.status !== "live" || !session.match.currentPlayer) return false;
   return state.me.id === session.host.id || state.me.id === session.match.currentPlayer.id;
@@ -227,6 +232,14 @@ async function updateTeamOrder(teamSlot, orderedIds) {
   await request(`/api/sessions/${state.session.id}/teams/reorder`, {
     method: "POST",
     body: JSON.stringify({ teamSlot, orderedUserIds: orderedIds }),
+  });
+  await refreshDashboard();
+}
+
+async function assignPlayerTeam(userId, teamSlot) {
+  await request(`/api/sessions/${state.session.id}/teams/assign`, {
+    method: "POST",
+    body: JSON.stringify({ userId, teamSlot }),
   });
   await refreshDashboard();
 }
@@ -246,10 +259,14 @@ function renderTeamList(listElement, teamSlot, players) {
     if (member.isOut) statusBits.push("out");
     li.innerHTML = `<div><strong>${member.displayName}</strong><p class="meta">${member.username ? `@${member.username}` : "nick pending"} | ${statusBits.join(" | ")}</p></div>`;
 
-    if (canManageSession(state.session) && state.session.match.status !== "live" && players.length > 1) {
+    if (
+      canManageSession(state.session) &&
+      state.session.match.status !== "live" &&
+      (players.length > 1 || state.session.teams.mode === "manual")
+    ) {
       const controls = document.createElement("div");
       controls.className = "action-row";
-      if (index > 0) {
+      if (players.length > 1 && index > 0) {
         controls.appendChild(
           moveButton("Up", async () => {
             const reordered = players.map((player) => player.id);
@@ -258,12 +275,24 @@ function renderTeamList(listElement, teamSlot, players) {
           }),
         );
       }
-      if (index < players.length - 1) {
+      if (players.length > 1 && index < players.length - 1) {
         controls.appendChild(
           moveButton("Down", async () => {
             const reordered = players.map((player) => player.id);
             [reordered[index], reordered[index + 1]] = [reordered[index + 1], reordered[index]];
             await updateTeamOrder(teamSlot, reordered);
+          }),
+        );
+      }
+      if (state.session.teams.mode === "manual") {
+        controls.appendChild(
+          moveButton(teamSlot === "A" ? "To Team B" : "To Team A", async () => {
+            await assignPlayerTeam(member.id, teamSlot === "A" ? "B" : "A");
+          }),
+        );
+        controls.appendChild(
+          moveButton("Unassign", async () => {
+            await assignPlayerTeam(member.id, null);
           }),
         );
       }
@@ -300,6 +329,21 @@ function renderAvailablePlayers(session) {
       });
       li.appendChild(button);
     }
+    if (session.teams.mode === "manual" && canManageSession(session) && session.match.status !== "live" && hasPlayerNick()) {
+      const controls = document.createElement("div");
+      controls.className = "action-row";
+      controls.appendChild(
+        moveButton("Team A", async () => {
+          await assignPlayerTeam(member.id, "A");
+        }),
+      );
+      controls.appendChild(
+        moveButton("Team B", async () => {
+          await assignPlayerTeam(member.id, "B");
+        }),
+      );
+      li.appendChild(controls);
+    }
     elements.availablePlayerList.appendChild(li);
   }
 }
@@ -315,6 +359,17 @@ function renderPendingInvites(session) {
     const li = document.createElement("li");
     li.className = "list-card";
     li.innerHTML = `<div><strong>${invite.displayName}</strong><p class="meta">${invite.username ? `@${invite.username}` : "nick pending"} | pending</p></div>`;
+    if (canUseDevInviteShortcut(session)) {
+      const button = document.createElement("button");
+      button.className = "secondary-button";
+      button.type = "button";
+      button.textContent = "Add now";
+      button.addEventListener("click", async () => {
+        await request(`/api/sessions/${session.id}/invites/${invite.inviteId}/add`, { method: "POST" });
+        await refreshDashboard();
+      });
+      li.appendChild(button);
+    }
     elements.inviteList.appendChild(li);
   }
 }
@@ -346,7 +401,7 @@ function renderMatchPanel(session) {
     const li = document.createElement("li");
     li.className = "list-card";
     const finishText = player.hitsWhenFinished === null ? "-" : player.hitsWhenFinished;
-    li.innerHTML = `<div><strong>${player.displayName}</strong><p class="meta">Team ${player.teamSlot} | order ${player.teamOrder} | throws ${player.throws} | hits ${player.hits} | accuracy ${player.accuracy}% | hits to finish ${finishText} | ${player.isOut ? "out" : "active"}</p></div>`;
+    li.innerHTML = `<div><strong>${player.displayName}</strong><p class="meta">Team ${player.teamSlot} | order ${player.teamOrder} | throws ${player.throws} | hits ${player.hits} | accuracy ${player.accuracy}% | team hits to finish ${finishText} | ${player.isOut ? "out" : "active"}</p></div>`;
     elements.playerStatsList.appendChild(li);
   }
 }
@@ -398,6 +453,7 @@ function renderSession() {
 
   const matchLocked = session.match.status === "live";
   elements.autoTeamsButton.disabled = !nickReady || !canManageSession(session) || matchLocked;
+  elements.manualTeamsButton.disabled = !nickReady || !canManageSession(session) || matchLocked;
   elements.captainDraftButton.disabled = !nickReady || !canManageSession(session) || matchLocked;
   elements.startDraftButton.disabled = !nickReady || !canManageSession(session) || matchLocked;
   elements.startMatchButton.disabled =
@@ -486,19 +542,23 @@ elements.facebookLoginButton.addEventListener("click", () => {
 
 elements.devLoginForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const payload = await request("/api/auth/dev-login", {
-    method: "POST",
-    body: JSON.stringify({
-      displayName: new FormData(elements.devLoginForm).get("displayName"),
-      username: new FormData(elements.devLoginForm).get("username"),
-      next: getJoinTarget(),
-    }),
-  });
-  if (payload?.next && payload.next !== "/" && payload.next.startsWith("/join/")) {
-    history.replaceState({}, "", payload.next);
+  try {
+    const payload = await request("/api/auth/dev-login", {
+      method: "POST",
+      body: JSON.stringify({
+        displayName: new FormData(elements.devLoginForm).get("displayName"),
+        username: new FormData(elements.devLoginForm).get("username"),
+        next: getJoinTarget(),
+      }),
+    });
+    if (payload?.next && payload.next !== "/" && payload.next.startsWith("/join/")) {
+      history.replaceState({}, "", payload.next);
+    }
+    elements.devLoginForm.reset();
+    await refreshDashboard();
+  } catch (error) {
+    alert(error.message);
   }
-  elements.devLoginForm.reset();
-  await refreshDashboard();
 });
 
 elements.nickForm.addEventListener("submit", async (event) => {
@@ -543,6 +603,11 @@ elements.sessionForm.addEventListener("submit", async (event) => {
 
 elements.autoTeamsButton.addEventListener("click", async () => {
   await request(`/api/sessions/${state.session.id}/teams/auto`, { method: "POST" });
+  await refreshDashboard();
+});
+
+elements.manualTeamsButton.addEventListener("click", async () => {
+  await request(`/api/sessions/${state.session.id}/teams/manual`, { method: "POST" });
   await refreshDashboard();
 });
 

@@ -3,17 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "precheck": "npm run styles:build",
     "check": "node --check src/worker.js && node --check public/app.js",
+    "predev": "npm run styles:build",
     "dev": "wrangler dev --local",
-    "dev:preview": "wrangler dev --env preview --local",
-    "deploy": "node -e \"throw new Error('Use npm run deploy:preview or npm run deploy:production explicitly.')\"",
-    "deploy:preview": "wrangler deploy --env preview",
+    "styles:build": "tailwindcss -i ./src/styles.css -o ./public/styles.css --minify",
+    "deploy": "node -e \"throw new Error('Use npm run deploy:production explicitly.')\"",
     "deploy:production": "wrangler deploy --env production",
-    "db:apply:preview": "wrangler d1 execute flanki-db-preview --env preview --remote --file=./schema.sql",
     "db:apply:production": "wrangler d1 execute flanki-db --env production --remote --file=./schema.sql",
-    "db:reset:local": "wrangler d1 execute flanki-db-local --local --file=./schema-reset.sql && wrangler d1 execute flanki-db-local --local --file=./schema.sql"
+    "db:reset:local": "wrangler d1 execute flanki-db-local --local --file=./schema-reset.sql && wrangler d1 execute flanki-db-local --local --file=./schema.sql",
+    "demo:seed:local": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/seed-local-demo.ps1"
   },
   "devDependencies": {
+    "@tailwindcss/cli": "^4.2.2",
+    "tailwindcss": "^4.2.2",
     "wrangler": "^4.11.1"
   }
 }
