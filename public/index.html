@@ -10,24 +10,33 @@
     <div class="app-shell">
       <header class="topbar">
         <div class="hero-copy">
-          <div class="hero-badge-row">
-            <p class="eyebrow">Flanki Night</p>
-            <span class="hero-badge">Beer league flow</span>
-          </div>
-          <h1>Build the lobby. Pour the teams. Run the match.</h1>
-          <p class="subcopy">A mobile-first Flanki match desk for organizing the crew, tracking throws, and finishing beers with a proper pub-night atmosphere.</p>
-          <div class="hero-stats">
-            <div class="hero-stat">
-              <span class="hero-stat-label">Lobby</span>
-              <strong>Invite friends fast</strong>
-            </div>
-            <div class="hero-stat">
-              <span class="hero-stat-label">Match</span>
-              <strong>Track every throw</strong>
-            </div>
-            <div class="hero-stat">
-              <span class="hero-stat-label">Ranking</span>
-              <strong>Keep season form</strong>
+          <p class="eyebrow hero-kicker">Flanki</p>
+          <h1>Set the match in motion.</h1>
+          <p class="subcopy">A clean little match desk for invites, teams, throws, and a lighter kind of beer-league chaos.</p>
+        </div>
+        <div class="hero-visual" aria-hidden="true">
+          <div class="hero-visual-frame hero-animation-frame">
+            <div class="hero-animation">
+              <div class="hero-animation-glow"></div>
+              <div class="hero-animation-swoosh"></div>
+              <div class="hero-animation-floor"></div>
+              <div class="hero-animation-ball">
+                <span class="hero-animation-ball-hole hero-animation-ball-hole-a"></span>
+                <span class="hero-animation-ball-hole hero-animation-ball-hole-b"></span>
+                <span class="hero-animation-ball-hole hero-animation-ball-hole-c"></span>
+                <span class="hero-animation-ball-hole hero-animation-ball-hole-d"></span>
+              </div>
+              <div class="hero-animation-impact-ring"></div>
+              <div class="hero-animation-can-shadow"></div>
+              <div class="hero-animation-can">
+                <div class="hero-animation-can-top"></div>
+                <div class="hero-animation-can-face">
+                  <span class="hero-animation-can-stripe"></span>
+                </div>
+              </div>
+              <div class="hero-animation-splash hero-animation-splash-a"></div>
+              <div class="hero-animation-splash hero-animation-splash-b"></div>
+              <div class="hero-animation-splash hero-animation-splash-c"></div>
             </div>
           </div>
         </div>
@@ -65,9 +74,9 @@
           <article id="dev-login-panel" class="panel feature-panel" hidden>
             <p class="eyebrow">Local mode</p>
             <h2>Test without login</h2>
-            <p class="meta">Create a temporary local test player for trying sessions, teams, stats, and ranking without Facebook.</p>
+            <p class="meta">Create a temporary local test player for trying sessions, teams, stats, and ranking without Facebook. The demo seed now also preloads completed matches for a realistic leaderboard.</p>
             <p class="meta top-gap">Seeded local demo users: <code>demo_alex</code>, <code>demo_blair</code>, <code>demo_casey</code>, <code>demo_drew</code>, <code>demo_emery</code>, <code>demo_finley</code></p>
-            <form id="dev-login-form" class="stack-form top-gap">
+          <form id="dev-login-form" class="stack-form top-gap">
               <input id="dev-display-name" name="displayName" placeholder="Test display name" required />
               <input id="dev-username" name="username" placeholder="test_player" required />
               <button class="secondary-button" type="submit">Continue as test player</button>
